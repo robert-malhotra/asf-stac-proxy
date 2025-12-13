@@ -471,13 +471,9 @@ func (h *Handlers) Search(w http.ResponseWriter, r *http.Request) {
 	itemCollection.AddLink("self", searchURL, "application/geo+json")
 	itemCollection.AddLink("root", baseURL+"/", "application/json")
 
-	// For POST requests, we need to use the original query params if it was GET
+	// For POST requests, query params may be empty (body contains params)
+	// We still need to build pagination links for the response
 	var queryParams = r.URL.Query()
-	if r.Method == http.MethodPost && len(queryParams) == 0 {
-		// Skip pagination links for POST without query params
-		WriteGeoJSON(w, http.StatusOK, itemCollection)
-		return
-	}
 
 	// Build pagination links based on backend type
 	if h.backend.SupportsPagination() && result.NextCursor != "" {

@@ -40,9 +40,11 @@ func (b *CMRBackend) Name() string {
 	return "cmr"
 }
 
-// SupportsPagination returns true because CMR supports native pagination.
+// SupportsPagination returns false to use unified cursor-based pagination.
+// While CMR supports native pagination via CMR-Search-After header, we use
+// the same client-side cursor-based pagination as ASF for consistency.
 func (b *CMRBackend) SupportsPagination() bool {
-	return true
+	return false
 }
 
 // Search executes a search against the CMR API.
@@ -77,7 +79,7 @@ func (b *CMRBackend) Search(ctx context.Context, params *backend.SearchParams) (
 
 	return &backend.SearchResult{
 		Items:      items,
-		NextCursor: result.SearchAfter,
+		// NextCursor is not set - we use unified client-side cursor pagination
 		TotalCount: &result.Hits,
 	}, nil
 }
@@ -175,9 +177,8 @@ func (b *CMRBackend) toCMRParams(params *backend.SearchParams) (*SearchParams, e
 	if params.Limit > 0 {
 		cmrParams.PageSize = params.Limit
 	}
-	if params.Cursor != "" {
-		cmrParams.SearchAfter = params.Cursor
-	}
+	// Note: We don't pass params.Cursor to CMR - we use unified client-side
+	// cursor pagination that works the same way as ASF backend
 
 	// Map sort
 	if params.SortField != "" {
