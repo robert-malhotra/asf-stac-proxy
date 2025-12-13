@@ -1,0 +1,46 @@
+{
+  "id": "uavsar",
+  "title": "UAVSAR",
+  "description": "Uninhabited Aerial Vehicle Synthetic Aperture Radar airborne SAR data from NASA JPL",
+  "asf_datasets": ["UAVSAR"],
+  "asf_platforms": ["G-III"],
+  "asf_processing_levels": ["COMPLEX", "DEM_TIFF", "INC", "KMZ", "PAULI", "PROJECTED", "PROJECTED_ML3X3", "PROJECTED_ML5X5", "SLOPE", "STOKES"],
+  "cmr": {
+    "short_names": ["UAVSAR_POLSAR_SLC", "UAVSAR_POLSAR_GRD", "UAVSAR_INSAR_SLC", "UAVSAR_INSAR_GRD"],
+    "provider": "ASF"
+  },
+  "license": "proprietary",
+  "providers": [
+    {
+      "name": "NASA JPL",
+      "description": "Jet Propulsion Laboratory",
+      "roles": ["producer"],
+      "url": "https://uavsar.jpl.nasa.gov"
+    },
+    {
+      "name": "Alaska Satellite Facility",
+      "description": "ASF DAAC",
+      "roles": ["processor", "host"],
+      "url": "https://asf.alaska.edu"
+    }
+  ],
+  "extent": {
+    "spatial": {
+      "bbox": [[-180, -90, 180, 90]]
+    },
+    "temporal": {
+      "interval": [["2008-01-01T00:00:00Z", null]]
+    }
+  },
+  "summaries": {
+    "platform": ["g-iii"],
+    "instruments": ["uavsar"],
+    "sar:frequency_band": ["L"],
+    "sar:polarizations": [["HH"], ["HV"], ["VV"], ["VH"], ["HH", "HV", "VV", "VH"]]
+  },
+  "stac_extensions": [
+    "https://stac-extensions.github.io/sar/v1.0.0/schema.json",
+    "https://stac-extensions.github.io/sat/v1.0.0/schema.json",
+    "https://stac-extensions.github.io/processing/v1.0.0/schema.json"
+  ]
+}

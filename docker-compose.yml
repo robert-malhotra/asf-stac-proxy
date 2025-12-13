@@ -1,0 +1,25 @@
+services:
+  asf-stac-proxy:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8080
+      - BASE_URL=http://localhost:8080
+      - ASF_BASE_URL=https://api.daac.asf.alaska.edu
+      - ASF_TIMEOUT=30s
+      - STAC_VERSION=1.0.0
+      - TITLE=ASF STAC API
+      - DESCRIPTION=STAC API proxy for Alaska Satellite Facility SAR data
+      - DEFAULT_LIMIT=10
+      - MAX_LIMIT=250
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s

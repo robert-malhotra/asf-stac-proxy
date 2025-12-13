@@ -1,0 +1,47 @@
+{
+  "id": "opera-s1",
+  "title": "OPERA Sentinel-1",
+  "description": "Observational Products for End-Users from Remote Sensing Analysis (OPERA) products derived from Sentinel-1",
+  "asf_datasets": ["OPERA-S1"],
+  "asf_platforms": ["Sentinel-1A", "Sentinel-1B"],
+  "asf_processing_levels": ["RTC", "CSLC"],
+  "cmr": {
+    "short_names": ["OPERA_L2_RTC-S1_V1", "OPERA_L2_CSLC-S1_V1"],
+    "provider": "ASF"
+  },
+  "license": "proprietary",
+  "providers": [
+    {
+      "name": "NASA JPL",
+      "description": "Jet Propulsion Laboratory",
+      "roles": ["producer"],
+      "url": "https://www.jpl.nasa.gov"
+    },
+    {
+      "name": "Alaska Satellite Facility",
+      "description": "ASF DAAC",
+      "roles": ["processor", "host"],
+      "url": "https://asf.alaska.edu"
+    }
+  ],
+  "extent": {
+    "spatial": {
+      "bbox": [[-180, -90, 180, 90]]
+    },
+    "temporal": {
+      "interval": [["2014-04-03T00:00:00Z", null]]
+    }
+  },
+  "summaries": {
+    "platform": ["sentinel-1a", "sentinel-1b"],
+    "instruments": ["c-sar"],
+    "constellation": ["sentinel-1"],
+    "sar:frequency_band": ["C"],
+    "sat:orbit_state": ["ascending", "descending"]
+  },
+  "stac_extensions": [
+    "https://stac-extensions.github.io/sar/v1.0.0/schema.json",
+    "https://stac-extensions.github.io/sat/v1.0.0/schema.json",
+    "https://stac-extensions.github.io/processing/v1.0.0/schema.json"
+  ]
+}

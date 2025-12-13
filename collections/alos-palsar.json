@@ -1,0 +1,48 @@
+{
+  "id": "alos-palsar",
+  "title": "ALOS PALSAR",
+  "description": "ALOS PALSAR L-band synthetic aperture radar data from JAXA",
+  "asf_datasets": ["ALOS"],
+  "asf_platforms": ["ALOS"],
+  "asf_processing_levels": ["L1.0", "L1.1", "L1.5"],
+  "cmr": {
+    "short_names": ["ALOS_PALSAR_LEVEL1.0", "ALOS_PALSAR_LEVEL1.1", "ALOS_PALSAR_LEVEL1.5"],
+    "provider": "ASF"
+  },
+  "license": "proprietary",
+  "providers": [
+    {
+      "name": "JAXA",
+      "description": "Japan Aerospace Exploration Agency",
+      "roles": ["producer", "licensor"],
+      "url": "https://www.jaxa.jp"
+    },
+    {
+      "name": "Alaska Satellite Facility",
+      "description": "ASF DAAC",
+      "roles": ["processor", "host"],
+      "url": "https://asf.alaska.edu"
+    }
+  ],
+  "extent": {
+    "spatial": {
+      "bbox": [[-180, -90, 180, 90]]
+    },
+    "temporal": {
+      "interval": [["2006-05-16T00:00:00Z", "2011-04-22T00:00:00Z"]]
+    }
+  },
+  "summaries": {
+    "platform": ["alos"],
+    "instruments": ["palsar"],
+    "sar:instrument_mode": ["FBS", "FBD", "PLR", "WB1", "WB2"],
+    "sar:frequency_band": ["L"],
+    "sar:polarizations": [["HH"], ["HV"], ["VV"], ["VH"], ["HH", "HV"], ["VV", "VH"]],
+    "sat:orbit_state": ["ascending", "descending"]
+  },
+  "stac_extensions": [
+    "https://stac-extensions.github.io/sar/v1.0.0/schema.json",
+    "https://stac-extensions.github.io/sat/v1.0.0/schema.json",
+    "https://stac-extensions.github.io/processing/v1.0.0/schema.json"
+  ]
+}
