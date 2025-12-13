@@ -1,6 +1,6 @@
 module github.com/rkm/asf-stac-proxy
 
-go 1.25.3
+go 1.24.0
 
 require (
 	github.com/caarlos0/env/v10 v10.0.0
