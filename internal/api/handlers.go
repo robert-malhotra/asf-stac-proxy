@@ -188,8 +188,30 @@ func (h *Handlers) Items(w http.ResponseWriter, r *http.Request) {
 		searchReq.Limit = h.cfg.Features.MaxLimit
 	}
 
+	// Decode current cursor if present (needed for filtering duplicates on ASF backend)
+	var currentCursor *intstac.Cursor
+	if searchReq.Cursor != "" && !h.backend.SupportsPagination() {
+		var cursorErr error
+		currentCursor, cursorErr = intstac.DecodeCursorWithStore(searchReq.Cursor, h.cursorStore)
+		if cursorErr != nil {
+			h.logger.Warn("failed to decode cursor",
+				slog.String("error", cursorErr.Error()),
+			)
+		}
+	}
+
 	// Build backend search params
+	// For ASF backend with cursor, over-fetch to compensate for SeenIDs filtering
 	backendParams := h.buildBackendParams(searchReq, collectionID)
+	backendLimit := searchReq.Limit
+	if !h.backend.SupportsPagination() && currentCursor != nil && len(currentCursor.SeenIDs) > 0 {
+		// Request extra items to compensate for filtering
+		backendLimit = searchReq.Limit + len(currentCursor.SeenIDs)
+		if backendLimit > h.cfg.Features.MaxLimit {
+			backendLimit = h.cfg.Features.MaxLimit
+		}
+		backendParams.Limit = backendLimit
+	}
 
 	// Execute search against backend
 	ctx := r.Context()
@@ -204,36 +226,27 @@ func (h *Handlers) Items(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Decode current cursor if present (needed for filtering duplicates on ASF backend)
-	// Uses cursor store for server-side cursors (prefixed with "ref:")
-	var currentCursor *intstac.Cursor
-	if searchReq.Cursor != "" && !h.backend.SupportsPagination() {
-		var cursorErr error
-		currentCursor, cursorErr = intstac.DecodeCursorWithStore(searchReq.Cursor, h.cursorStore)
-		if cursorErr != nil {
-			h.logger.Warn("failed to decode cursor",
-				slog.String("error", cursorErr.Error()),
-			)
-			// Continue without cursor - will start from beginning
-		}
-	}
+	// Track if backend returned a full page (used for pagination decision)
+	backendReturnedFullPage := len(result.Items) >= backendLimit
 
 	// Build STAC ItemCollection from backend results
 	itemCollection := intstac.NewItemCollection(result.Items)
 
-	// Set context with pagination metadata
-	limit := searchReq.Limit
-	if limit == 0 {
-		limit = h.cfg.Features.DefaultLimit
-	}
-	itemCollection.SetContext(len(result.Items), limit, result.TotalCount)
-
 	// Filter out items that were already returned in the previous page (for ASF backend)
-	if !h.backend.SupportsPagination() {
+	if !h.backend.SupportsPagination() && currentCursor != nil {
 		itemCollection.Features = intstac.FilterSeenItems(itemCollection.Features, func(item *intstac.Item) string {
 			return item.Id
 		}, currentCursor)
 	}
+
+	// Trim to requested limit if we over-fetched
+	if len(itemCollection.Features) > searchReq.Limit {
+		itemCollection.Features = itemCollection.Features[:searchReq.Limit]
+	}
+
+	// Set context with pagination metadata
+	limit := searchReq.Limit
+	itemCollection.SetContext(len(itemCollection.Features), limit, result.TotalCount)
 
 	// Add standard links
 	baseURL := h.cfg.STAC.BaseURL
@@ -252,17 +265,19 @@ func (h *Handlers) Items(w http.ResponseWriter, r *http.Request) {
 			Href: nextURL,
 			Type: "application/geo+json",
 		})
-	} else if !h.backend.SupportsPagination() {
+	} else if !h.backend.SupportsPagination() && len(itemCollection.Features) > 0 {
 		// ASF-style: build cursor from item timestamps
+		// Generate next link if backend returned a full page (more data likely exists)
 		items := extractItemTimeInfos(itemCollection.Features)
 		paginationInfo := intstac.CursorPaginationInfo{
-			BaseURL:       selfURL,
-			Limit:         searchReq.Limit,
-			ReturnedCount: len(itemCollection.Features),
-			QueryParams:   r.URL.Query(),
-			Items:         items,
-			CurrentCursor: currentCursor,
-			CursorStore:   h.cursorStore,
+			BaseURL:            selfURL,
+			Limit:              searchReq.Limit,
+			ReturnedCount:      len(itemCollection.Features),
+			BackendHasMoreData: backendReturnedFullPage,
+			QueryParams:        r.URL.Query(),
+			Items:              items,
+			CurrentCursor:      currentCursor,
+			CursorStore:        h.cursorStore,
 		}
 		paginationLinks := intstac.BuildCursorPaginationLinks(paginationInfo)
 		for _, link := range paginationLinks {
@@ -379,8 +394,29 @@ func (h *Handlers) Search(w http.ResponseWriter, r *http.Request) {
 		searchReq.Limit = h.cfg.Features.MaxLimit
 	}
 
+	// Decode current cursor if present (needed for filtering duplicates on ASF backend)
+	var currentCursor *intstac.Cursor
+	if searchReq.Cursor != "" && !h.backend.SupportsPagination() {
+		var cursorErr error
+		currentCursor, cursorErr = intstac.DecodeCursorWithStore(searchReq.Cursor, h.cursorStore)
+		if cursorErr != nil {
+			h.logger.Warn("failed to decode cursor",
+				slog.String("error", cursorErr.Error()),
+			)
+		}
+	}
+
 	// Build backend search params
+	// For ASF backend with cursor, over-fetch to compensate for SeenIDs filtering
 	backendParams := h.buildBackendParams(searchReq, "")
+	backendLimit := searchReq.Limit
+	if !h.backend.SupportsPagination() && currentCursor != nil && len(currentCursor.SeenIDs) > 0 {
+		backendLimit = searchReq.Limit + len(currentCursor.SeenIDs)
+		if backendLimit > h.cfg.Features.MaxLimit {
+			backendLimit = h.cfg.Features.MaxLimit
+		}
+		backendParams.Limit = backendLimit
+	}
 
 	// Validate collections exist
 	for _, collID := range searchReq.Collections {
@@ -407,34 +443,27 @@ func (h *Handlers) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Decode current cursor if present (needed for filtering duplicates on ASF backend)
-	var currentCursor *intstac.Cursor
-	if searchReq.Cursor != "" && !h.backend.SupportsPagination() {
-		var cursorErr error
-		currentCursor, cursorErr = intstac.DecodeCursorWithStore(searchReq.Cursor, h.cursorStore)
-		if cursorErr != nil {
-			h.logger.Warn("failed to decode cursor",
-				slog.String("error", cursorErr.Error()),
-			)
-		}
-	}
+	// Track if backend returned a full page (used for pagination decision)
+	backendReturnedFullPage := len(result.Items) >= backendLimit
 
 	// Build STAC ItemCollection from backend results
 	itemCollection := intstac.NewItemCollection(result.Items)
 
-	// Set context with pagination metadata
-	limit := searchReq.Limit
-	if limit == 0 {
-		limit = h.cfg.Features.DefaultLimit
-	}
-	itemCollection.SetContext(len(result.Items), limit, result.TotalCount)
-
 	// Filter out items that were already returned in the previous page (for ASF backend)
-	if !h.backend.SupportsPagination() {
+	if !h.backend.SupportsPagination() && currentCursor != nil {
 		itemCollection.Features = intstac.FilterSeenItems(itemCollection.Features, func(item *intstac.Item) string {
 			return item.Id
 		}, currentCursor)
 	}
+
+	// Trim to requested limit if we over-fetched
+	if len(itemCollection.Features) > searchReq.Limit {
+		itemCollection.Features = itemCollection.Features[:searchReq.Limit]
+	}
+
+	// Set context with pagination metadata
+	limit := searchReq.Limit
+	itemCollection.SetContext(len(itemCollection.Features), limit, result.TotalCount)
 
 	// Add standard links
 	baseURL := h.cfg.STAC.BaseURL
@@ -459,17 +488,18 @@ func (h *Handlers) Search(w http.ResponseWriter, r *http.Request) {
 			Href: nextURL,
 			Type: "application/geo+json",
 		})
-	} else if !h.backend.SupportsPagination() {
+	} else if !h.backend.SupportsPagination() && len(itemCollection.Features) > 0 {
 		// ASF-style: build cursor from item timestamps
 		items := extractItemTimeInfos(itemCollection.Features)
 		paginationInfo := intstac.CursorPaginationInfo{
-			BaseURL:       searchURL,
-			Limit:         searchReq.Limit,
-			ReturnedCount: len(itemCollection.Features),
-			QueryParams:   queryParams,
-			Items:         items,
-			CurrentCursor: currentCursor,
-			CursorStore:   h.cursorStore,
+			BaseURL:            searchURL,
+			Limit:              searchReq.Limit,
+			ReturnedCount:      len(itemCollection.Features),
+			BackendHasMoreData: backendReturnedFullPage,
+			QueryParams:        queryParams,
+			Items:              items,
+			CurrentCursor:      currentCursor,
+			CursorStore:        h.cursorStore,
 		}
 		paginationLinks := intstac.BuildCursorPaginationLinks(paginationInfo)
 		for _, link := range paginationLinks {

@@ -131,14 +131,20 @@ type CursorPaginationInfo struct {
 	// CursorStore is used for server-side cursor storage when cursors are too large.
 	// If nil, cursors are always encoded inline (may cause URL length issues).
 	CursorStore CursorStore
+	// BackendHasMoreData indicates the backend returned a full page of results,
+	// suggesting more data exists. Used for pagination decisions after filtering.
+	BackendHasMoreData bool
 }
 
 // BuildCursorPaginationLinks generates next/prev links using cursor-based pagination
 func BuildCursorPaginationLinks(info CursorPaginationInfo) []*Link {
 	links := make([]*Link, 0, 2)
 
-	// Generate next link if we returned a full page (suggests more results)
-	if info.ReturnedCount >= info.Limit && len(info.Items) > 0 {
+	// Generate next link if:
+	// 1. BackendHasMoreData is true (backend returned a full page), OR
+	// 2. We returned a full page after filtering (fallback for backward compatibility)
+	hasMoreData := info.BackendHasMoreData || info.ReturnedCount >= info.Limit
+	if hasMoreData && len(info.Items) > 0 {
 		// Find the MINIMUM startTime from all items on this page
 		// This is important because ASF's ordering may not be strictly by startTime
 		minTime := info.Items[0].StartTime

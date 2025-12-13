@@ -382,3 +382,173 @@ func TestBuildCursorPaginationLinks_WithStore(t *testing.T) {
 		t.Errorf("Expected 50 SeenIDs, got %d", len(decoded.SeenIDs))
 	}
 }
+
+func TestBuildCursorPaginationLinks_BackendHasMoreData(t *testing.T) {
+	// Test that BackendHasMoreData=true generates "next" link even when ReturnedCount < Limit
+	// This is the key fix for pagination when filtering SeenIDs reduces the returned count
+
+	baseTime := time.Date(2024, 1, 15, 12, 0, 0, 0, time.UTC)
+
+	// Scenario: Backend returned 100 items, but after filtering SeenIDs we only have 80
+	// With BackendHasMoreData=true, we should still get a "next" link
+	items := make([]ItemTimeInfo, 80)
+	for i := 0; i < 80; i++ {
+		items[i] = ItemTimeInfo{
+			ID:        fmt.Sprintf("item-%03d", i),
+			StartTime: baseTime,
+		}
+	}
+
+	info := CursorPaginationInfo{
+		BaseURL:            "http://example.com/items",
+		Limit:              100,
+		ReturnedCount:      80, // Less than limit due to filtering
+		BackendHasMoreData: true,
+		QueryParams:        url.Values{},
+		Items:              items,
+		CurrentCursor:      nil,
+	}
+
+	links := BuildCursorPaginationLinks(info)
+
+	// Should still have "next" link because BackendHasMoreData=true
+	if len(links) != 1 {
+		t.Fatalf("Expected 1 link (next) with BackendHasMoreData=true, got %d", len(links))
+	}
+	if links[0].Rel != "next" {
+		t.Errorf("Expected 'next' link, got '%s'", links[0].Rel)
+	}
+}
+
+func TestBuildCursorPaginationLinks_NoMoreDataWhenBothFalse(t *testing.T) {
+	// Test that no "next" link is generated when both BackendHasMoreData=false
+	// and ReturnedCount < Limit (truly the last page)
+
+	baseTime := time.Date(2024, 1, 15, 12, 0, 0, 0, time.UTC)
+
+	// Scenario: Backend returned only 50 items (less than our limit of 100)
+	// This means we've reached the end of the data
+	items := make([]ItemTimeInfo, 50)
+	for i := 0; i < 50; i++ {
+		items[i] = ItemTimeInfo{
+			ID:        fmt.Sprintf("item-%03d", i),
+			StartTime: baseTime,
+		}
+	}
+
+	info := CursorPaginationInfo{
+		BaseURL:            "http://example.com/items",
+		Limit:              100,
+		ReturnedCount:      50,
+		BackendHasMoreData: false, // Backend returned less than requested
+		QueryParams:        url.Values{},
+		Items:              items,
+		CurrentCursor:      nil,
+	}
+
+	links := BuildCursorPaginationLinks(info)
+
+	// Should NOT have "next" link
+	if len(links) != 0 {
+		t.Errorf("Expected no links when truly at last page, got %d links", len(links))
+	}
+}
+
+func TestBuildCursorPaginationLinks_BackendHasMoreDataWithSeenIDs(t *testing.T) {
+	// Test realistic scenario: paginating through items where many share same timestamp
+	// Backend over-fetches, we filter SeenIDs, and still need next link
+
+	baseTime := time.Date(2024, 1, 15, 12, 0, 0, 0, time.UTC)
+
+	// Simulate: limit=100, backend returned 120 (over-fetch), after filtering we have 95
+	// Previous cursor had 20 SeenIDs, so we over-fetched by 20
+	previousCursor := &Cursor{
+		StartTime: baseTime.Format(time.RFC3339),
+		Direction: "next",
+		SeenIDs:   make([]string, 20),
+	}
+	for i := 0; i < 20; i++ {
+		previousCursor.SeenIDs[i] = fmt.Sprintf("prev-item-%03d", i)
+	}
+
+	// Current page items (after filtering out the 20 SeenIDs)
+	items := make([]ItemTimeInfo, 95)
+	for i := 0; i < 95; i++ {
+		items[i] = ItemTimeInfo{
+			ID:        fmt.Sprintf("item-%03d", i+20), // IDs 20-114
+			StartTime: baseTime,
+		}
+	}
+
+	info := CursorPaginationInfo{
+		BaseURL:            "http://example.com/items",
+		Limit:              100,
+		ReturnedCount:      95,                // After filtering, less than limit
+		BackendHasMoreData: true,              // Backend returned 120 items (full over-fetch)
+		QueryParams:        url.Values{},
+		Items:              items,
+		CurrentCursor:      previousCursor,
+	}
+
+	links := BuildCursorPaginationLinks(info)
+
+	// Should have "next" link because backend had more data
+	if len(links) != 1 {
+		t.Fatalf("Expected 1 link (next), got %d", len(links))
+	}
+
+	// Decode the cursor and verify SeenIDs are accumulated
+	cursor, err := decodeCursorFromURL(links[0].Href)
+	if err != nil {
+		t.Fatalf("Failed to decode cursor: %v", err)
+	}
+
+	// Should accumulate: 20 from previous + 95 from current = 115 SeenIDs
+	// (all at same timestamp)
+	if len(cursor.SeenIDs) != 115 {
+		t.Errorf("Expected 115 accumulated SeenIDs, got %d", len(cursor.SeenIDs))
+	}
+}
+
+func TestBuildCursorPaginationLinks_LastPageAfterFiltering(t *testing.T) {
+	// Test edge case: after filtering, we have fewer items than limit,
+	// but backend also returned fewer items (truly last page)
+
+	baseTime := time.Date(2024, 1, 15, 12, 0, 0, 0, time.UTC)
+
+	// Simulate: limit=100, over-fetch requested 120, but backend only had 80 total
+	previousCursor := &Cursor{
+		StartTime: baseTime.Format(time.RFC3339),
+		Direction: "next",
+		SeenIDs:   make([]string, 20),
+	}
+	for i := 0; i < 20; i++ {
+		previousCursor.SeenIDs[i] = fmt.Sprintf("prev-item-%03d", i)
+	}
+
+	// After filtering the 20 SeenIDs, we only have 60 unique items
+	items := make([]ItemTimeInfo, 60)
+	for i := 0; i < 60; i++ {
+		items[i] = ItemTimeInfo{
+			ID:        fmt.Sprintf("item-%03d", i+20),
+			StartTime: baseTime,
+		}
+	}
+
+	info := CursorPaginationInfo{
+		BaseURL:            "http://example.com/items",
+		Limit:              100,
+		ReturnedCount:      60,
+		BackendHasMoreData: false, // Backend returned less than the over-fetch amount
+		QueryParams:        url.Values{},
+		Items:              items,
+		CurrentCursor:      previousCursor,
+	}
+
+	links := BuildCursorPaginationLinks(info)
+
+	// Should NOT have "next" link - this is truly the last page
+	if len(links) != 0 {
+		t.Errorf("Expected no links on last page, got %d", len(links))
+	}
+}
