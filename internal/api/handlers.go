@@ -196,7 +196,10 @@ func (h *Handlers) Items(w http.ResponseWriter, r *http.Request) {
 		if cursorErr != nil {
 			h.logger.Warn("failed to decode cursor",
 				slog.String("error", cursorErr.Error()),
+				slog.String("cursor", searchReq.Cursor),
 			)
+			WriteBadRequest(w, fmt.Sprintf("invalid or expired cursor: %s", cursorErr.Error()))
+			return
 		}
 	}
 
@@ -402,7 +405,10 @@ func (h *Handlers) Search(w http.ResponseWriter, r *http.Request) {
 		if cursorErr != nil {
 			h.logger.Warn("failed to decode cursor",
 				slog.String("error", cursorErr.Error()),
+				slog.String("cursor", searchReq.Cursor),
 			)
+			WriteBadRequest(w, fmt.Sprintf("invalid or expired cursor: %s", cursorErr.Error()))
+			return
 		}
 	}
 

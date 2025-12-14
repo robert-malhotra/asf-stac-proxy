@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -52,9 +53,20 @@ func Recovery(logger *slog.Logger) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {
-				if err := recover(); err != nil {
+				if rec := recover(); rec != nil {
+					// Safely extract error message from recover() which can return any type
+					var errStr string
+					switch v := rec.(type) {
+					case error:
+						errStr = v.Error()
+					case string:
+						errStr = v
+					default:
+						errStr = fmt.Sprintf("%v", v)
+					}
+
 					logger.Error("panic recovered",
-						slog.String("error", err.(error).Error()),
+						slog.String("error", errStr),
 						slog.String("path", r.URL.Path),
 						slog.String("method", r.Method),
 					)

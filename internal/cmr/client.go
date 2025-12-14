@@ -117,7 +117,12 @@ func (c *Client) Search(ctx context.Context, params *SearchParams) (*SearchResul
 
 	// Check for non-200 status codes
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			c.logger.WarnContext(ctx, "failed to read error response body",
+				slog.String("error", readErr.Error()),
+			)
+		}
 		c.logger.ErrorContext(ctx, "CMR API returned non-200 status",
 			slog.Int("status_code", resp.StatusCode),
 			slog.String("response_body", string(body)),

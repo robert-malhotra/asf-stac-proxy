@@ -3,6 +3,7 @@ package stac
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
@@ -32,11 +33,16 @@ type Cursor struct {
 
 // EncodeCursor encodes a cursor to a URL-safe string.
 // If a CursorStore is provided and the cursor is large, it will be stored server-side.
+// Returns an empty string if the cursor is nil or encoding fails.
 func EncodeCursor(cursor *Cursor) string {
 	if cursor == nil {
 		return ""
 	}
-	data, _ := json.Marshal(cursor)
+	data, err := json.Marshal(cursor)
+	if err != nil {
+		// This should never happen with a simple struct, but handle gracefully
+		return ""
+	}
 	return base64.URLEncoding.EncodeToString(data)
 }
 
@@ -48,7 +54,10 @@ func EncodeCursorWithStore(cursor *Cursor, store CursorStore) (string, error) {
 	}
 
 	// First, try inline encoding
-	data, _ := json.Marshal(cursor)
+	data, err := json.Marshal(cursor)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal cursor: %w", err)
+	}
 	encoded := base64.URLEncoding.EncodeToString(data)
 
 	// If small enough, use inline encoding
