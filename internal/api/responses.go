@@ -11,6 +11,7 @@ import (
 type STACError struct {
 	Code        string `json:"code"`
 	Description string `json:"description"`
+	RequestID   string `json:"request_id,omitempty"`
 }
 
 // Standard STAC error codes.
@@ -56,9 +57,15 @@ func WriteGeoJSON(w http.ResponseWriter, status int, v any) error {
 
 // WriteError writes a STAC-compliant error response.
 func WriteError(w http.ResponseWriter, status int, code, message string) {
+	WriteErrorWithRequestID(w, status, code, message, "")
+}
+
+// WriteErrorWithRequestID writes a STAC-compliant error response with a request ID.
+func WriteErrorWithRequestID(w http.ResponseWriter, status int, code, message, requestID string) {
 	errResp := STACError{
 		Code:        code,
 		Description: message,
+		RequestID:   requestID,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -67,6 +74,7 @@ func WriteError(w http.ResponseWriter, status int, code, message string) {
 	if err := json.NewEncoder(w).Encode(errResp); err != nil {
 		slog.Error("failed to encode error response",
 			slog.String("error", err.Error()),
+			slog.String("request_id", requestID),
 		)
 	}
 }
@@ -89,6 +97,11 @@ func WriteInvalidParameter(w http.ResponseWriter, message string) {
 // WriteInternalError writes a 500 Internal Server Error response.
 func WriteInternalError(w http.ResponseWriter, message string) {
 	WriteError(w, http.StatusInternalServerError, ErrCodeServerError, message)
+}
+
+// WriteInternalErrorWithRequestID writes a 500 Internal Server Error response with request ID.
+func WriteInternalErrorWithRequestID(w http.ResponseWriter, message, requestID string) {
+	WriteErrorWithRequestID(w, http.StatusInternalServerError, ErrCodeServerError, message, requestID)
 }
 
 // WriteUpstreamError writes a 502 Bad Gateway error for upstream service failures.

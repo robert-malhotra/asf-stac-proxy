@@ -3,7 +3,6 @@ package translate
 
 import (
 	"encoding/json"
-	"fmt"
 	"log/slog"
 
 	"github.com/rkm/asf-stac-proxy/internal/asf"
@@ -126,7 +125,7 @@ func (t *Translator) TranslateSTACSearchToASF(req *stac.SearchRequest, collectio
 	if len(req.Sortby) > 0 {
 		// ASF only supports single field sorting, use the first one
 		sortby := req.Sortby[0]
-		asfSort, err := mapSTACFieldToASFSort(sortby.Field)
+		asfSort, err := stac.MapSTACFieldToASFSort(sortby.Field)
 		if err != nil {
 			t.logger.Warn("unsupported sort field, ignoring", "field", sortby.Field)
 		} else {
@@ -150,23 +149,6 @@ func (t *Translator) TranslateSTACSearchToASF(req *stac.SearchRequest, collectio
 	return params, nil
 }
 
-// mapSTACFieldToASFSort maps STAC field names to ASF sort parameters
-func mapSTACFieldToASFSort(stacField string) (string, error) {
-	// Map STAC fields to ASF sort fields
-	// ASF supports: startTime, stopTime, dataset, platform, frame, orbit
-	switch stacField {
-	case "datetime", "start_datetime", "properties.datetime", "properties.start_datetime":
-		return "startTime", nil
-	case "end_datetime", "properties.end_datetime":
-		return "stopTime", nil
-	case "platform", "properties.platform":
-		return "platform", nil
-	case "collection":
-		return "dataset", nil
-	default:
-		return "", fmt.Errorf("unsupported sort field: %s", stacField)
-	}
-}
 
 // TranslateASFFeatureToSTACItem converts an ASF feature to a STAC item.
 func (t *Translator) TranslateASFFeatureToSTACItem(feature *asf.ASFFeature, collectionID string) (*stac.Item, error) {

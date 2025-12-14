@@ -15,6 +15,7 @@ func NewRouter(h *Handlers, logger *slog.Logger) chi.Router {
 
 	// Add middleware stack
 	r.Use(middleware.RequestID)
+	r.Use(RequestIDResponse) // Add X-Request-ID to response headers
 	r.Use(middleware.RealIP)
 	r.Use(RequestLogger(logger))
 	r.Use(Recovery(logger))
@@ -26,7 +27,7 @@ func NewRouter(h *Handlers, logger *slog.Logger) chi.Router {
 		AllowedOrigins:   []string{"*"}, // Allow all origins for STAC API
 		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Content-Type", "Content-Length"},
-		ExposedHeaders:   []string{"Link"},
+		ExposedHeaders:   []string{"Link", "X-Request-ID"},
 		AllowCredentials: false,
 		MaxAge:           300, // 5 minutes
 	}))

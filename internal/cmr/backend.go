@@ -182,7 +182,11 @@ func (b *CMRBackend) toCMRParams(params *backend.SearchParams) (*SearchParams, e
 
 	// Map sort
 	if params.SortField != "" {
-		cmrParams.SortKey = mapSTACFieldToCMRSort(params.SortField, params.SortDirection)
+		dir := stac.SortAsc
+		if params.SortDirection == "desc" {
+			dir = stac.SortDesc
+		}
+		cmrParams.SortKey = stac.MapSTACFieldToCMRSort(params.SortField, dir)
 	}
 
 	return cmrParams, nil
@@ -225,24 +229,6 @@ func (b *CMRBackend) determineCollection(granule *UMMGranule) string {
 	return ""
 }
 
-// mapSTACFieldToCMRSort maps STAC field names to CMR sort keys.
-func mapSTACFieldToCMRSort(field, direction string) string {
-	prefix := ""
-	if direction == "desc" {
-		prefix = "-"
-	}
-
-	switch field {
-	case "datetime", "start_datetime", "properties.datetime", "properties.start_datetime":
-		return prefix + "start_date"
-	case "end_datetime", "properties.end_datetime":
-		return prefix + "end_date"
-	case "platform", "properties.platform":
-		return prefix + "platform"
-	default:
-		return prefix + "start_date"
-	}
-}
 
 // geojsonToPolygon converts GeoJSON geometry to CMR polygon format.
 func geojsonToPolygon(geojsonBytes []byte) (string, error) {

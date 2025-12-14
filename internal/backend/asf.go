@@ -187,7 +187,7 @@ func (b *ASFBackend) toASFParams(params *SearchParams) (*asf.SearchParams, error
 
 	// Map sort
 	if params.SortField != "" {
-		asfSort, err := mapSTACFieldToASFSort(params.SortField)
+		asfSort, err := stac.MapSTACFieldToASFSort(params.SortField)
 		if err == nil {
 			asfParams.Sort = asfSort
 		}
@@ -214,18 +214,3 @@ func (b *ASFBackend) determineCollection(feature *asf.ASFFeature) string {
 	return ""
 }
 
-// mapSTACFieldToASFSort maps STAC field names to ASF sort parameters.
-func mapSTACFieldToASFSort(stacField string) (string, error) {
-	switch stacField {
-	case "datetime", "start_datetime", "properties.datetime", "properties.start_datetime":
-		return "startTime", nil
-	case "end_datetime", "properties.end_datetime":
-		return "stopTime", nil
-	case "platform", "properties.platform":
-		return "platform", nil
-	case "collection":
-		return "dataset", nil
-	default:
-		return "", fmt.Errorf("unsupported sort field: %s", stacField)
-	}
-}
