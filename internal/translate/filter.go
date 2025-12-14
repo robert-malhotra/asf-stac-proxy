@@ -202,6 +202,9 @@ func applyPropertyFilter(propName string, value any, params *asf.SearchParams) e
 		return applyBeamModeFilter(value, params)
 	case "sar:polarizations":
 		return applyPolarizationFilter(value, params)
+	case "sar:product_type":
+		// sar:product_type maps to ASF's processingLevel (e.g., SLC, GRD, RAW)
+		return applyProcessingLevelFilter(value, params)
 	case "sat:orbit_state":
 		return applyOrbitStateFilter(value, params)
 	case "sat:relative_orbit":

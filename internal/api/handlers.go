@@ -471,9 +471,15 @@ func (h *Handlers) Search(w http.ResponseWriter, r *http.Request) {
 	itemCollection.AddLink("self", searchURL, "application/geo+json")
 	itemCollection.AddLink("root", baseURL+"/", "application/json")
 
-	// For POST requests, query params may be empty (body contains params)
-	// We still need to build pagination links for the response
-	var queryParams = r.URL.Query()
+	// For POST requests, query params in URL are empty (body contains params)
+	// Convert search request to query params for pagination links
+	var queryParams url.Values
+	if r.Method == http.MethodPost {
+		// Use search parameters from request body for pagination links
+		queryParams = searchReq.ToQueryParams()
+	} else {
+		queryParams = r.URL.Query()
+	}
 
 	// Build pagination links based on backend type
 	if h.backend.SupportsPagination() && result.NextCursor != "" {
@@ -704,24 +710,38 @@ func (h *Handlers) extractFilterParams(filter interface{}, params *backend.Searc
 	// Filter can be a map (CQL2-JSON) or string (CQL2-Text)
 	filterMap, ok := filter.(map[string]interface{})
 	if !ok {
+		h.logger.Debug("extractFilterParams: filter is not a map", slog.String("type", fmt.Sprintf("%T", filter)))
 		return
 	}
 
+	h.logger.Debug("extractFilterParams: processing filter", slog.Any("filter", filterMap))
+
 	// Look for known properties in the filter
 	extractPropertyValues(filterMap, "sar:polarizations", func(vals []string) {
+		h.logger.Debug("extractFilterParams: found sar:polarizations", slog.Any("vals", vals))
 		params.Polarization = vals
 	})
 	extractPropertyValues(filterMap, "sar:instrument_mode", func(vals []string) {
+		h.logger.Debug("extractFilterParams: found sar:instrument_mode", slog.Any("vals", vals))
 		params.BeamMode = vals
 	})
 	extractPropertyValues(filterMap, "sat:orbit_state", func(vals []string) {
+		h.logger.Debug("extractFilterParams: found sat:orbit_state", slog.Any("vals", vals))
 		if len(vals) > 0 {
 			params.FlightDirection = vals[0]
 		}
 	})
 	extractPropertyValues(filterMap, "processing:level", func(vals []string) {
+		h.logger.Debug("extractFilterParams: found processing:level", slog.Any("vals", vals))
 		params.ProcessingLevel = vals
 	})
+	// sar:product_type maps to processing level (e.g., SLC, GRD, RAW)
+	extractPropertyValues(filterMap, "sar:product_type", func(vals []string) {
+		h.logger.Debug("extractFilterParams: found sar:product_type", slog.Any("vals", vals))
+		params.ProcessingLevel = vals
+	})
+
+	h.logger.Debug("extractFilterParams: final params", slog.Any("processingLevel", params.ProcessingLevel))
 }
 
 // extractPropertyValues extracts property values from a CQL2 filter recursively.

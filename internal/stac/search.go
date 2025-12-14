@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -119,9 +120,21 @@ func ParseSearchRequest(r *http.Request) (*SearchRequest, error) {
 
 	// Parse filter parameters
 	if filter := query.Get("filter"); filter != "" {
-		// For GET requests, filter is typically CQL2-Text format
-		// We store it as-is; the translator will handle parsing
-		req.Filter = filter
+		// Try to parse as JSON (CQL2-JSON format) if filter-lang is cql2-json or auto-detect
+		filterLang := query.Get("filter-lang")
+		if filterLang == "cql2-json" || (filterLang == "" && strings.HasPrefix(strings.TrimSpace(filter), "{")) {
+			// Parse as JSON
+			var filterObj interface{}
+			if err := json.Unmarshal([]byte(filter), &filterObj); err == nil {
+				req.Filter = filterObj
+			} else {
+				// Fall back to storing as string if JSON parsing fails
+				req.Filter = filter
+			}
+		} else {
+			// Store as-is for CQL2-Text format
+			req.Filter = filter
+		}
 	}
 	if filterLang := query.Get("filter-lang"); filterLang != "" {
 		req.FilterLang = filterLang
@@ -187,4 +200,77 @@ func ParseSearchRequestBody(body io.Reader) (*SearchRequest, error) {
 	}
 
 	return &req, nil
+}
+
+// ToQueryParams converts a SearchRequest to URL query parameters.
+// This is used to preserve search parameters in pagination links for POST requests.
+func (req *SearchRequest) ToQueryParams() url.Values {
+	params := url.Values{}
+
+	// BBox
+	if len(req.BBox) >= 4 {
+		bboxStrs := make([]string, len(req.BBox))
+		for i, v := range req.BBox {
+			bboxStrs[i] = strconv.FormatFloat(v, 'f', -1, 64)
+		}
+		params.Set("bbox", strings.Join(bboxStrs, ","))
+	}
+
+	// DateTime
+	if req.DateTime != "" {
+		params.Set("datetime", req.DateTime)
+	}
+
+	// Intersects (GeoJSON geometry)
+	if len(req.Intersects) > 0 {
+		params.Set("intersects", string(req.Intersects))
+	}
+
+	// IDs
+	if len(req.IDs) > 0 {
+		params.Set("ids", strings.Join(req.IDs, ","))
+	}
+
+	// Collections
+	if len(req.Collections) > 0 {
+		params.Set("collections", strings.Join(req.Collections, ","))
+	}
+
+	// Limit is handled separately in pagination link building
+
+	// Sortby
+	if len(req.Sortby) > 0 {
+		var sortbyStrs []string
+		for _, item := range req.Sortby {
+			prefix := "+"
+			if item.Direction == "desc" {
+				prefix = "-"
+			}
+			sortbyStrs = append(sortbyStrs, prefix+item.Field)
+		}
+		params.Set("sortby", strings.Join(sortbyStrs, ","))
+	}
+
+	// Filter - convert to JSON string for query param
+	if req.Filter != nil {
+		filterBytes, err := json.Marshal(req.Filter)
+		if err == nil && len(filterBytes) > 0 && string(filterBytes) != "null" {
+			params.Set("filter", string(filterBytes))
+		}
+	}
+
+	// Filter-lang
+	if req.FilterLang != "" {
+		params.Set("filter-lang", req.FilterLang)
+	} else if req.Filter != nil {
+		// Default to cql2-json for JSON filters
+		params.Set("filter-lang", "cql2-json")
+	}
+
+	// Filter-crs
+	if req.FilterCRS != "" {
+		params.Set("filter-crs", req.FilterCRS)
+	}
+
+	return params
 }

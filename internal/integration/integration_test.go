@@ -1416,6 +1416,340 @@ func runPaginationTest(t *testing.T, baseURL, backendName string, pageSize, numP
 
 
 // =============================================================================
+// Pagination Filter Preservation Tests
+// =============================================================================
+
+// TestPaginationPreservesFilters verifies that CQL2-JSON filters from POST requests
+// are preserved in pagination links and correctly applied on subsequent pages.
+// This tests the fix for the bug where filters were lost after the first page.
+func TestPaginationPreservesFilters(t *testing.T) {
+	// Run for both backends
+	t.Run("ASF", func(t *testing.T) {
+		server := setupTestServerWithBackend(t, "asf")
+		defer server.Close()
+		runFilterPaginationTest(t, server.URL, "ASF")
+	})
+
+	t.Run("CMR", func(t *testing.T) {
+		server := setupTestServerWithBackend(t, "cmr")
+		defer server.Close()
+		runFilterPaginationTest(t, server.URL, "CMR")
+	})
+}
+
+// setupTestServerWithBackend creates a test server with the specified backend type
+func setupTestServerWithBackend(t *testing.T, backendType string) *httptest.Server {
+	t.Helper()
+
+	os.Setenv("STAC_BASE_URL", "http://test.local")
+	os.Setenv("BACKEND_TYPE", backendType)
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	collections, err := config.LoadCollections("../../collections")
+	if err != nil {
+		t.Fatalf("failed to load collections: %v", err)
+	}
+
+	translator := translate.NewTranslator(cfg, collections, logger)
+
+	var searchBackend backend.SearchBackend
+	if backendType == "cmr" {
+		cmrClient := cmr.NewClient(cfg.CMR.BaseURL, cfg.CMR.Provider, cfg.CMR.Timeout)
+		searchBackend = cmr.NewCMRBackend(cmrClient, collections, cfg, logger)
+	} else {
+		asfClient := asf.NewClient(cfg.ASF.BaseURL, cfg.ASF.Timeout)
+		searchBackend = backend.NewASFBackend(asfClient, collections, translator, cfg, logger)
+	}
+
+	handlers := api.NewHandlers(cfg, searchBackend, translator, collections, logger)
+	router := api.NewRouter(handlers, logger)
+
+	return httptest.NewServer(router)
+}
+
+// runFilterPaginationTest tests that filters are preserved across pagination
+func runFilterPaginationTest(t *testing.T, baseURL, backendName string) {
+	t.Helper()
+
+	// Helper to fix URLs returned by the server
+	fixURL := func(u string) string {
+		return strings.Replace(u, "http://test.local", baseURL, 1)
+	}
+
+	t.Run("POST_filter_preserved_in_pagination", func(t *testing.T) {
+		// First page: POST request with SLC filter
+		searchBody := map[string]interface{}{
+			"collections": []string{"sentinel-1"},
+			"limit":       3,
+			"filter": map[string]interface{}{
+				"op": "=",
+				"args": []interface{}{
+					map[string]interface{}{"property": "sar:product_type"},
+					"SLC",
+				},
+			},
+			"filter-lang": "cql2-json",
+		}
+
+		bodyBytes, _ := json.Marshal(searchBody)
+		resp, err := http.Post(baseURL+"/search", "application/json", bytes.NewReader(bodyBytes))
+		if err != nil {
+			t.Fatalf("first request failed: %v", err)
+		}
+
+		var result map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			resp.Body.Close()
+			t.Fatalf("failed to decode first response: %v", err)
+		}
+		resp.Body.Close()
+
+		features, ok := result["features"].([]interface{})
+		if !ok || len(features) == 0 {
+			t.Skipf("%s: no features returned for SLC filter, skipping test", backendName)
+		}
+
+		t.Logf("%s Page 1: %d items", backendName, len(features))
+
+		// Verify all items on first page are SLC
+		for i, f := range features {
+			feature := f.(map[string]interface{})
+			props := feature["properties"].(map[string]interface{})
+			productType, _ := props["sar:product_type"].(string)
+			if productType != "SLC" {
+				t.Errorf("Page 1 item %d: expected sar:product_type=SLC, got %s", i, productType)
+			}
+		}
+
+		// Find next link
+		var nextURL string
+		links, ok := result["links"].([]interface{})
+		if !ok {
+			t.Fatalf("no links in response")
+		}
+		for _, l := range links {
+			link := l.(map[string]interface{})
+			if link["rel"] == "next" {
+				nextURL = fixURL(link["href"].(string))
+				break
+			}
+		}
+
+		if nextURL == "" {
+			t.Skipf("%s: no next link found, not enough data for pagination test", backendName)
+		}
+
+		// Verify the next URL contains the filter parameter
+		if !strings.Contains(nextURL, "filter=") {
+			t.Errorf("next link does not contain filter parameter: %s", nextURL)
+		}
+		if !strings.Contains(nextURL, "filter-lang=") {
+			t.Errorf("next link does not contain filter-lang parameter: %s", nextURL)
+		}
+
+		t.Logf("%s: Next URL: %s", backendName, nextURL)
+
+		// Second page: GET request following the pagination link
+		resp, err = http.Get(nextURL)
+		if err != nil {
+			t.Fatalf("second page request failed: %v", err)
+		}
+
+		var page2Result map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&page2Result); err != nil {
+			resp.Body.Close()
+			t.Fatalf("failed to decode second page response: %v", err)
+		}
+		resp.Body.Close()
+
+		page2Features, ok := page2Result["features"].([]interface{})
+		if !ok || len(page2Features) == 0 {
+			t.Skipf("%s: no features on second page", backendName)
+		}
+
+		t.Logf("%s Page 2: %d items", backendName, len(page2Features))
+
+		// Verify all items on second page are also SLC (filter was preserved)
+		nonSLCCount := 0
+		for i, f := range page2Features {
+			feature := f.(map[string]interface{})
+			props := feature["properties"].(map[string]interface{})
+			productType, _ := props["sar:product_type"].(string)
+			if productType != "SLC" {
+				nonSLCCount++
+				t.Errorf("Page 2 item %d: expected sar:product_type=SLC, got %s (filter not preserved!)", i, productType)
+			}
+		}
+
+		if nonSLCCount > 0 {
+			t.Errorf("%s: %d/%d items on page 2 were not SLC - filter was not preserved in pagination",
+				backendName, nonSLCCount, len(page2Features))
+		} else {
+			t.Logf("%s: All %d items on page 2 are SLC - filter correctly preserved", backendName, len(page2Features))
+		}
+	})
+
+	t.Run("GET_filter_works_directly", func(t *testing.T) {
+		// Test that filters work when passed directly via GET query params
+		filterJSON := `{"op":"=","args":[{"property":"sar:product_type"},"SLC"]}`
+		url := fmt.Sprintf("%s/search?collections=sentinel-1&limit=3&filter=%s&filter-lang=cql2-json",
+			baseURL, filterJSON)
+
+		resp, err := http.Get(url)
+		if err != nil {
+			t.Fatalf("GET request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		var result map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			t.Fatalf("failed to decode response: %v", err)
+		}
+
+		features, ok := result["features"].([]interface{})
+		if !ok || len(features) == 0 {
+			t.Skipf("%s: no features returned for GET filter request", backendName)
+		}
+
+		t.Logf("%s GET filter: %d items", backendName, len(features))
+
+		// Verify all items are SLC
+		for i, f := range features {
+			feature := f.(map[string]interface{})
+			props := feature["properties"].(map[string]interface{})
+			productType, _ := props["sar:product_type"].(string)
+			if productType != "SLC" {
+				t.Errorf("GET filter item %d: expected sar:product_type=SLC, got %s", i, productType)
+			}
+		}
+	})
+
+	t.Run("combined_filter_preserved", func(t *testing.T) {
+		// Test with a combined AND filter
+		searchBody := map[string]interface{}{
+			"collections": []string{"sentinel-1"},
+			"limit":       3,
+			"filter": map[string]interface{}{
+				"op": "and",
+				"args": []interface{}{
+					map[string]interface{}{
+						"op": "=",
+						"args": []interface{}{
+							map[string]interface{}{"property": "sar:product_type"},
+							"SLC",
+						},
+					},
+					map[string]interface{}{
+						"op": "=",
+						"args": []interface{}{
+							map[string]interface{}{"property": "sar:instrument_mode"},
+							"IW",
+						},
+					},
+				},
+			},
+			"filter-lang": "cql2-json",
+		}
+
+		bodyBytes, _ := json.Marshal(searchBody)
+		resp, err := http.Post(baseURL+"/search", "application/json", bytes.NewReader(bodyBytes))
+		if err != nil {
+			t.Fatalf("first request failed: %v", err)
+		}
+
+		var result map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			resp.Body.Close()
+			t.Fatalf("failed to decode first response: %v", err)
+		}
+		resp.Body.Close()
+
+		features, ok := result["features"].([]interface{})
+		if !ok || len(features) == 0 {
+			t.Skipf("%s: no features returned for combined filter", backendName)
+		}
+
+		t.Logf("%s Combined filter Page 1: %d items", backendName, len(features))
+
+		// Verify all items match both filters
+		for i, f := range features {
+			feature := f.(map[string]interface{})
+			props := feature["properties"].(map[string]interface{})
+			productType, _ := props["sar:product_type"].(string)
+			instrumentMode, _ := props["sar:instrument_mode"].(string)
+			if productType != "SLC" {
+				t.Errorf("Page 1 item %d: expected sar:product_type=SLC, got %s", i, productType)
+			}
+			if instrumentMode != "IW" {
+				t.Errorf("Page 1 item %d: expected sar:instrument_mode=IW, got %s", i, instrumentMode)
+			}
+		}
+
+		// Find and follow next link
+		var nextURL string
+		links, _ := result["links"].([]interface{})
+		for _, l := range links {
+			link := l.(map[string]interface{})
+			if link["rel"] == "next" {
+				nextURL = fixURL(link["href"].(string))
+				break
+			}
+		}
+
+		if nextURL == "" {
+			t.Skipf("%s: no next link for combined filter test", backendName)
+		}
+
+		// Get second page
+		resp, err = http.Get(nextURL)
+		if err != nil {
+			t.Fatalf("second page request failed: %v", err)
+		}
+
+		var page2Result map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&page2Result); err != nil {
+			resp.Body.Close()
+			t.Fatalf("failed to decode second page response: %v", err)
+		}
+		resp.Body.Close()
+
+		page2Features, ok := page2Result["features"].([]interface{})
+		if !ok || len(page2Features) == 0 {
+			t.Skipf("%s: no features on second page of combined filter test", backendName)
+		}
+
+		t.Logf("%s Combined filter Page 2: %d items", backendName, len(page2Features))
+
+		// Verify second page also matches both filters
+		errors := 0
+		for i, f := range page2Features {
+			feature := f.(map[string]interface{})
+			props := feature["properties"].(map[string]interface{})
+			productType, _ := props["sar:product_type"].(string)
+			instrumentMode, _ := props["sar:instrument_mode"].(string)
+			if productType != "SLC" {
+				t.Errorf("Page 2 item %d: expected sar:product_type=SLC, got %s", i, productType)
+				errors++
+			}
+			if instrumentMode != "IW" {
+				t.Errorf("Page 2 item %d: expected sar:instrument_mode=IW, got %s", i, instrumentMode)
+				errors++
+			}
+		}
+
+		if errors == 0 {
+			t.Logf("%s: Combined filter correctly preserved across pagination", backendName)
+		}
+	})
+}
+
+// =============================================================================
 // Helper Functions
 // =============================================================================
 

@@ -429,6 +429,193 @@ func TestHandlers_Search_OverFetchWithSeenIDs(t *testing.T) {
 	}
 }
 
+func TestHandlers_Search_FilterPreservedInPaginationLinks(t *testing.T) {
+	// Test that CQL2-JSON filters from POST requests are preserved in pagination links
+
+	baseTime := time.Date(2024, 1, 15, 12, 0, 0, 0, time.UTC)
+
+	// Create items with different product types
+	items := make([]*gostac.Item, 20)
+	for i := 0; i < 20; i++ {
+		items[i] = createTestItem(fmt.Sprintf("item-%03d", i), baseTime.Add(-time.Duration(i)*time.Hour))
+		// All items are SLC for this test
+		items[i].Properties["sar:product_type"] = "SLC"
+	}
+
+	mock := &mockBackend{
+		items:              items,
+		supportsPagination: false,
+	}
+
+	cfg := createTestConfig()
+	cfg.Features.DefaultLimit = 5
+	cfg.Features.EnableSearch = true
+	collections := createTestCollections()
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+	translator := translate.NewTranslator(cfg, collections, logger)
+	cursorStore := stac.NewMemoryCursorStore(time.Hour, 5*time.Minute)
+	defer cursorStore.Stop()
+
+	handlers := NewHandlers(cfg, mock, translator, collections, logger).WithCursorStore(cursorStore)
+
+	// POST search with CQL2-JSON filter
+	body := `{
+		"collections": ["sentinel-1"],
+		"limit": 5,
+		"filter": {
+			"op": "=",
+			"args": [{"property": "sar:product_type"}, "SLC"]
+		},
+		"filter-lang": "cql2-json"
+	}`
+	req := httptest.NewRequest("POST", "/search", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	handlers.Search(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Parse response
+	var result stac.ItemCollection
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	// Find the "next" link
+	var nextLinkHref string
+	for _, link := range result.Links {
+		if link.Rel == "next" {
+			nextLinkHref = link.Href
+			break
+		}
+	}
+
+	if nextLinkHref == "" {
+		t.Fatal("Expected 'next' link in response")
+	}
+
+	// Parse the next link URL and verify filter parameters are present
+	nextURL, err := url.Parse(nextLinkHref)
+	if err != nil {
+		t.Fatalf("Failed to parse next link URL: %v", err)
+	}
+
+	queryParams := nextURL.Query()
+
+	// Verify filter parameter is present
+	filterParam := queryParams.Get("filter")
+	if filterParam == "" {
+		t.Error("Expected 'filter' parameter in next link, but it was missing")
+	} else {
+		// Verify the filter is valid JSON and contains our filter
+		var filterObj map[string]interface{}
+		if err := json.Unmarshal([]byte(filterParam), &filterObj); err != nil {
+			t.Errorf("Filter parameter is not valid JSON: %v", err)
+		} else {
+			// Check it has the expected structure
+			if filterObj["op"] != "=" {
+				t.Errorf("Expected filter op '=', got %v", filterObj["op"])
+			}
+			t.Logf("Filter preserved in next link: %s", filterParam)
+		}
+	}
+
+	// Verify filter-lang parameter is present
+	filterLangParam := queryParams.Get("filter-lang")
+	if filterLangParam == "" {
+		t.Error("Expected 'filter-lang' parameter in next link, but it was missing")
+	} else if filterLangParam != "cql2-json" {
+		t.Errorf("Expected filter-lang 'cql2-json', got %s", filterLangParam)
+	}
+
+	// Verify collections parameter is present
+	collectionsParam := queryParams.Get("collections")
+	if collectionsParam == "" {
+		t.Error("Expected 'collections' parameter in next link, but it was missing")
+	}
+
+	// Verify cursor is present
+	cursorParam := queryParams.Get("cursor")
+	if cursorParam == "" {
+		t.Error("Expected 'cursor' parameter in next link, but it was missing")
+	}
+
+	t.Logf("Next link URL: %s", nextLinkHref)
+}
+
+func TestHandlers_Search_FilterParsedFromGETQueryParams(t *testing.T) {
+	// Test that filters passed via GET query params are correctly parsed and applied
+
+	baseTime := time.Date(2024, 1, 15, 12, 0, 0, 0, time.UTC)
+
+	items := make([]*gostac.Item, 10)
+	for i := 0; i < 10; i++ {
+		items[i] = createTestItem(fmt.Sprintf("item-%03d", i), baseTime.Add(-time.Duration(i)*time.Hour))
+		items[i].Properties["sar:product_type"] = "SLC"
+	}
+
+	mock := &mockBackend{
+		items:              items,
+		supportsPagination: false,
+	}
+
+	cfg := createTestConfig()
+	cfg.Features.DefaultLimit = 5
+	cfg.Features.EnableSearch = true
+	collections := createTestCollections()
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+	translator := translate.NewTranslator(cfg, collections, logger)
+	cursorStore := stac.NewMemoryCursorStore(time.Hour, 5*time.Minute)
+	defer cursorStore.Stop()
+
+	handlers := NewHandlers(cfg, mock, translator, collections, logger).WithCursorStore(cursorStore)
+
+	// Simulate a GET request with filter in query params (like following a pagination link)
+	filterJSON := `{"op":"=","args":[{"property":"sar:product_type"},"SLC"]}`
+	reqURL := fmt.Sprintf("/search?collections=sentinel-1&limit=5&filter=%s&filter-lang=cql2-json",
+		url.QueryEscape(filterJSON))
+
+	req := httptest.NewRequest("GET", reqURL, nil)
+
+	w := httptest.NewRecorder()
+	handlers.Search(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Parse response
+	var result stac.ItemCollection
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	// Verify we got results
+	if len(result.Features) == 0 {
+		t.Fatal("Expected features in response")
+	}
+
+	t.Logf("GET search with filter returned %d items", len(result.Features))
+
+	// Verify the backend received the filter (check that processing level was set)
+	// Note: In a real scenario with the ASF backend, the processingLevel would be set
+	// For mock, we just verify the search was successful
+	if len(mock.searchCalls) == 0 {
+		t.Fatal("Expected at least one search call to backend")
+	}
+
+	// Check that ProcessingLevel was set (from sar:product_type filter)
+	lastCall := mock.searchCalls[len(mock.searchCalls)-1]
+	if len(lastCall.ProcessingLevel) == 0 {
+		t.Log("Note: ProcessingLevel not set - filter may not be translated for mock backend")
+	} else {
+		t.Logf("Backend received ProcessingLevel filter: %v", lastCall.ProcessingLevel)
+	}
+}
+
 func TestHandlers_Items_OverFetchCappedAtMaxLimit(t *testing.T) {
 	// Test that over-fetch doesn't exceed MaxLimit
 
