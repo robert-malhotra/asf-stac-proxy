@@ -20,6 +20,8 @@ import (
 
 	"github.com/rkm/asf-stac-proxy/internal/api"
 	"github.com/rkm/asf-stac-proxy/internal/asf"
+	"github.com/rkm/asf-stac-proxy/internal/backend"
+	"github.com/rkm/asf-stac-proxy/internal/cmr"
 	"github.com/rkm/asf-stac-proxy/internal/config"
 	"github.com/rkm/asf-stac-proxy/internal/translate"
 )
@@ -37,7 +39,7 @@ func getTestConfig() *TestConfig {
 	}
 }
 
-// setupTestServer creates a test server with the full proxy stack
+// setupTestServer creates a test server with the full proxy stack (defaults to ASF backend)
 func setupTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
 
@@ -74,7 +76,9 @@ func setupTestServer(t *testing.T) *httptest.Server {
 
 	asfClient := asf.NewClient(cfg.ASF.BaseURL, cfg.ASF.Timeout)
 	translator := translate.NewTranslator(cfg, collections, logger)
-	handlers := api.NewHandlers(cfg, asfClient, translator, collections, logger)
+	// Create real ASF backend
+	asfBackend := backend.NewASFBackend(asfClient, collections, translator, cfg, logger)
+	handlers := api.NewHandlers(cfg, asfBackend, translator, collections, logger)
 	router := api.NewRouter(handlers, logger)
 
 	return httptest.NewServer(router)
@@ -1090,6 +1094,326 @@ func TestASFProxyComparison(t *testing.T) {
 		}
 	})
 }
+
+// =============================================================================
+// Live Pagination Tests - ASF and CMR Backends
+// =============================================================================
+
+// TestLivePaginationASF tests pagination with the ASF backend using Sentinel-1 SLC data
+func TestLivePaginationASF(t *testing.T) {
+	// Skip if running short tests
+	if testing.Short() {
+		t.Skip("skipping live pagination test in short mode")
+	}
+
+	// Set up ASF backend
+	os.Setenv("STAC_BASE_URL", "http://test.local")
+	os.Setenv("BACKEND_TYPE", "asf")
+	defer os.Unsetenv("STAC_BASE_URL")
+	defer os.Unsetenv("BACKEND_TYPE")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	collections, err := config.LoadCollections("../../collections")
+	if err != nil {
+		t.Fatalf("failed to load collections: %v", err)
+	}
+
+	asfClient := asf.NewClient(cfg.ASF.BaseURL, cfg.ASF.Timeout)
+	translator := translate.NewTranslator(cfg, collections, logger)
+
+	// Create real ASF backend from backend package
+	asfBackend := backend.NewASFBackend(asfClient, collections, translator, cfg, logger)
+
+	handlers := api.NewHandlers(cfg, asfBackend, translator, collections, logger)
+	router := api.NewRouter(handlers, logger)
+
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	runPaginationTest(t, server.URL, "ASF", 5, 3) // 5 items per page, 3 pages
+}
+
+// TestLivePaginationCMR tests pagination with the CMR backend using Sentinel-1 SLC data
+func TestLivePaginationCMR(t *testing.T) {
+	// Skip if running short tests
+	if testing.Short() {
+		t.Skip("skipping live pagination test in short mode")
+	}
+
+	// Set up CMR backend
+	os.Setenv("STAC_BASE_URL", "http://test.local")
+	os.Setenv("BACKEND_TYPE", "cmr")
+	defer os.Unsetenv("STAC_BASE_URL")
+	defer os.Unsetenv("BACKEND_TYPE")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	collections, err := config.LoadCollections("../../collections")
+	if err != nil {
+		t.Fatalf("failed to load collections: %v", err)
+	}
+
+	translator := translate.NewTranslator(cfg, collections, logger)
+
+	// Create real CMR backend
+	cmrClient := cmr.NewClient(cfg.CMR.BaseURL, cfg.CMR.Provider, cfg.CMR.Timeout)
+	cmrBackend := cmr.NewCMRBackend(cmrClient, collections, cfg, logger)
+
+	handlers := api.NewHandlers(cfg, cmrBackend, translator, collections, logger)
+	router := api.NewRouter(handlers, logger)
+
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	runPaginationTest(t, server.URL, "CMR", 5, 3) // 5 items per page, 3 pages
+}
+
+// runPaginationTest is a helper that runs pagination tests for any backend
+func runPaginationTest(t *testing.T, baseURL, backendName string, pageSize, numPages int) {
+	t.Helper()
+
+	// Helper to fix URLs returned by the server (which use the configured base URL)
+	// to use the actual test server URL
+	fixURL := func(u string) string {
+		return strings.Replace(u, "http://test.local", baseURL, 1)
+	}
+
+	t.Run(fmt.Sprintf("%s_Search_Pagination", backendName), func(t *testing.T) {
+		seenIDs := make(map[string]bool)
+		var allItems []map[string]interface{}
+		var nextURL string
+
+		// First request - search for Sentinel-1 data
+		firstURL := fmt.Sprintf("%s/search", baseURL)
+		searchBody := map[string]interface{}{
+			"collections": []string{"sentinel-1"},
+			"limit":       pageSize,
+		}
+
+		bodyBytes, _ := json.Marshal(searchBody)
+		resp, err := http.Post(firstURL, "application/json", bytes.NewReader(bodyBytes))
+		if err != nil {
+			t.Fatalf("first request failed: %v", err)
+		}
+
+		var result map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			resp.Body.Close()
+			t.Fatalf("failed to decode first response: %v", err)
+		}
+		resp.Body.Close()
+
+		features, ok := result["features"].([]interface{})
+		if !ok || len(features) == 0 {
+			t.Fatalf("no features in first response")
+		}
+
+		t.Logf("%s Page 1: %d items", backendName, len(features))
+
+		// Record items from first page
+		for _, f := range features {
+			feature := f.(map[string]interface{})
+			id := feature["id"].(string)
+			if seenIDs[id] {
+				t.Errorf("duplicate item on page 1: %s", id)
+			}
+			seenIDs[id] = true
+			allItems = append(allItems, feature)
+		}
+
+		// Find next link
+		links := result["links"].([]interface{})
+		for _, l := range links {
+			link := l.(map[string]interface{})
+			if link["rel"] == "next" {
+				nextURL = fixURL(link["href"].(string))
+				break
+			}
+		}
+
+		if nextURL == "" {
+			t.Fatalf("no next link found on first page")
+		}
+
+		// Paginate through remaining pages
+		for page := 2; page <= numPages; page++ {
+			resp, err := http.Get(nextURL)
+			if err != nil {
+				t.Fatalf("page %d request failed: %v", page, err)
+			}
+
+			var pageResult map[string]interface{}
+			if err := json.NewDecoder(resp.Body).Decode(&pageResult); err != nil {
+				resp.Body.Close()
+				t.Fatalf("failed to decode page %d response: %v", page, err)
+			}
+			resp.Body.Close()
+
+			pageFeatures, ok := pageResult["features"].([]interface{})
+			if !ok {
+				t.Fatalf("no features array on page %d", page)
+			}
+
+			t.Logf("%s Page %d: %d items", backendName, page, len(pageFeatures))
+
+			if len(pageFeatures) == 0 {
+				t.Logf("no more results on page %d, ending pagination", page)
+				break
+			}
+
+			// Check for duplicates
+			duplicates := 0
+			for _, f := range pageFeatures {
+				feature := f.(map[string]interface{})
+				id := feature["id"].(string)
+				if seenIDs[id] {
+					duplicates++
+					t.Logf("duplicate item on page %d: %s", page, id)
+				}
+				seenIDs[id] = true
+				allItems = append(allItems, feature)
+			}
+
+			if duplicates > 0 {
+				t.Errorf("found %d duplicates on page %d", duplicates, page)
+			}
+
+			// Find next link for next iteration
+			nextURL = ""
+			pageLinks := pageResult["links"].([]interface{})
+			for _, l := range pageLinks {
+				link := l.(map[string]interface{})
+				if link["rel"] == "next" {
+					nextURL = fixURL(link["href"].(string))
+					break
+				}
+			}
+
+			if nextURL == "" && page < numPages {
+				t.Logf("no next link on page %d, ending pagination early", page)
+				break
+			}
+		}
+
+		t.Logf("%s: Total unique items collected: %d", backendName, len(seenIDs))
+
+		// Verify all items are valid STAC items
+		for i, item := range allItems {
+			if item["id"] == nil {
+				t.Errorf("item %d has no id", i)
+			}
+			if item["geometry"] == nil {
+				t.Errorf("item %d has no geometry", i)
+			}
+			if item["properties"] == nil {
+				t.Errorf("item %d has no properties", i)
+			}
+		}
+
+		// Verify we got items from multiple pages without duplicates
+		expectedMinItems := pageSize * 2 // At least 2 pages worth
+		if len(seenIDs) < expectedMinItems {
+			t.Errorf("expected at least %d unique items across pages, got %d", expectedMinItems, len(seenIDs))
+		}
+	})
+
+	t.Run(fmt.Sprintf("%s_Items_Endpoint_Pagination", backendName), func(t *testing.T) {
+		seenIDs := make(map[string]bool)
+		var nextURL string
+
+		// First request via items endpoint
+		firstURL := fmt.Sprintf("%s/collections/sentinel-1/items?limit=%d", baseURL, pageSize)
+		resp, err := http.Get(firstURL)
+		if err != nil {
+			t.Fatalf("first request failed: %v", err)
+		}
+
+		var result map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			resp.Body.Close()
+			t.Fatalf("failed to decode first response: %v", err)
+		}
+		resp.Body.Close()
+
+		features, ok := result["features"].([]interface{})
+		if !ok || len(features) == 0 {
+			t.Fatalf("no features in first response")
+		}
+
+		t.Logf("%s Items Page 1: %d items", backendName, len(features))
+
+		// Record items from first page
+		for _, f := range features {
+			feature := f.(map[string]interface{})
+			id := feature["id"].(string)
+			seenIDs[id] = true
+		}
+
+		// Find next link
+		links := result["links"].([]interface{})
+		for _, l := range links {
+			link := l.(map[string]interface{})
+			if link["rel"] == "next" {
+				nextURL = fixURL(link["href"].(string))
+				break
+			}
+		}
+
+		if nextURL == "" {
+			t.Fatalf("no next link found on first page of items endpoint")
+		}
+
+		// Get second page
+		resp, err = http.Get(nextURL)
+		if err != nil {
+			t.Fatalf("second page request failed: %v", err)
+		}
+
+		var page2Result map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&page2Result); err != nil {
+			resp.Body.Close()
+			t.Fatalf("failed to decode second page response: %v", err)
+		}
+		resp.Body.Close()
+
+		page2Features, ok := page2Result["features"].([]interface{})
+		if !ok || len(page2Features) == 0 {
+			t.Fatalf("no features on second page")
+		}
+
+		t.Logf("%s Items Page 2: %d items", backendName, len(page2Features))
+
+		// Check for duplicates
+		duplicates := 0
+		for _, f := range page2Features {
+			feature := f.(map[string]interface{})
+			id := feature["id"].(string)
+			if seenIDs[id] {
+				duplicates++
+				t.Logf("duplicate item: %s", id)
+			}
+			seenIDs[id] = true
+		}
+
+		if duplicates > 0 {
+			t.Errorf("found %d duplicates between page 1 and page 2", duplicates)
+		}
+
+		t.Logf("%s Items: Total unique items across 2 pages: %d", backendName, len(seenIDs))
+	})
+}
+
 
 // =============================================================================
 // Helper Functions
