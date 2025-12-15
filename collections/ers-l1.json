@@ -1,0 +1,50 @@
+{
+  "id": "ers-l1",
+  "title": "ERS-1 & ERS-2 - Level 1",
+  "description": "European Remote Sensing satellite Level 1 (processed SAR imagery) from ESA",
+  "asf_datasets": ["ERS-1", "ERS-2"],
+  "asf_platforms": ["ERS-1", "ERS-2"],
+  "asf_processing_level": "L1",
+  "cmr": {
+    "short_names": ["ERS-1_LEVEL1", "ERS-2_LEVEL1"],
+    "provider": "ASF"
+  },
+  "license": "proprietary",
+  "providers": [
+    {
+      "name": "ESA",
+      "description": "European Space Agency",
+      "roles": ["producer", "licensor"],
+      "url": "https://www.esa.int"
+    },
+    {
+      "name": "Alaska Satellite Facility",
+      "description": "ASF DAAC",
+      "roles": ["processor", "host"],
+      "url": "https://asf.alaska.edu"
+    }
+  ],
+  "extent": {
+    "spatial": {
+      "bbox": [[-180, -90, 180, 90]]
+    },
+    "temporal": {
+      "interval": [["1991-07-17T00:00:00Z", "2011-07-04T00:00:00Z"]]
+    }
+  },
+  "summaries": {
+    "platform": ["ers-1", "ers-2"],
+    "instruments": ["sar"],
+    "sar:instrument_mode": ["STD"],
+    "sar:frequency_band": ["C"],
+    "sar:polarizations": [["VV"]],
+    "sar:product_type": ["L1"],
+    "sat:orbit_state": ["ascending", "descending"],
+    "processing:level": ["L1"]
+  },
+  "stac_extensions": [
+    "https://stac-extensions.github.io/sar/v1.0.0/schema.json",
+    "https://stac-extensions.github.io/sat/v1.0.0/schema.json",
+    "https://stac-extensions.github.io/processing/v1.0.0/schema.json"
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "id": "sentinel-1-raw",
+  "title": "Sentinel-1 SAR - Raw Data (RAW)",
+  "description": "Sentinel-1 Raw data products. These contain unfocused SAR raw data and are typically used for specialized processing applications.",
+  "asf_datasets": ["SENTINEL-1"],
+  "asf_platforms": ["Sentinel-1A", "Sentinel-1B", "Sentinel-1C"],
+  "asf_processing_level": "RAW",
+  "cmr": {
+    "short_names": ["SENTINEL-1A_RAW", "SENTINEL-1B_RAW", "SENTINEL-1C_RAW"],
+    "provider": "ASF"
+  },
+  "license": "proprietary",
+  "providers": [
+    {
+      "name": "ESA",
+      "description": "European Space Agency",
+      "roles": ["producer", "licensor"],
+      "url": "https://www.esa.int"
+    },
+    {
+      "name": "Alaska Satellite Facility",
+      "description": "ASF DAAC",
+      "roles": ["processor", "host"],
+      "url": "https://asf.alaska.edu"
+    }
+  ],
+  "extent": {
+    "spatial": {
+      "bbox": [[-180, -90, 180, 90]]
+    },
+    "temporal": {
+      "interval": [["2014-04-03T00:00:00Z", null]]
+    }
+  },
+  "summaries": {
+    "platform": ["sentinel-1a", "sentinel-1b", "sentinel-1c"],
+    "instruments": ["c-sar"],
+    "constellation": ["sentinel-1"],
+    "sar:instrument_mode": ["IW", "EW", "SM", "WV"],
+    "sar:frequency_band": ["C"],
+    "sar:polarizations": [["VV"], ["VH"], ["VV", "VH"], ["HH"], ["HV"], ["HH", "HV"]],
+    "sar:product_type": ["RAW"],
+    "sat:orbit_state": ["ascending", "descending"],
+    "processing:level": ["L0"]
+  },
+  "stac_extensions": [
+    "https://stac-extensions.github.io/sar/v1.0.0/schema.json",
+    "https://stac-extensions.github.io/sat/v1.0.0/schema.json",
+    "https://stac-extensions.github.io/processing/v1.0.0/schema.json"
+  ]
+}

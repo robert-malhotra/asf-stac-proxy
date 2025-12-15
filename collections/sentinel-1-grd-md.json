@@ -1,0 +1,51 @@
+{
+  "id": "sentinel-1-grd-md",
+  "title": "Sentinel-1 SAR - Ground Range Detected Medium Resolution (GRD_MD)",
+  "description": "Sentinel-1 Ground Range Detected Medium Resolution Dual Polarization (GRD_MD) products. These are multi-looked, projected to ground range using an Earth ellipsoid model, with medium spatial resolution.",
+  "asf_datasets": ["SENTINEL-1"],
+  "asf_platforms": ["Sentinel-1A", "Sentinel-1B", "Sentinel-1C"],
+  "asf_processing_level": "GRD_MD",
+  "cmr": {
+    "short_names": ["SENTINEL-1A_DP_GRD_MEDIUM", "SENTINEL-1B_DP_GRD_MEDIUM", "SENTINEL-1C_DP_GRD_MEDIUM"],
+    "provider": "ASF"
+  },
+  "license": "proprietary",
+  "providers": [
+    {
+      "name": "ESA",
+      "description": "European Space Agency",
+      "roles": ["producer", "licensor"],
+      "url": "https://www.esa.int"
+    },
+    {
+      "name": "Alaska Satellite Facility",
+      "description": "ASF DAAC",
+      "roles": ["processor", "host"],
+      "url": "https://asf.alaska.edu"
+    }
+  ],
+  "extent": {
+    "spatial": {
+      "bbox": [[-180, -90, 180, 90]]
+    },
+    "temporal": {
+      "interval": [["2014-04-03T00:00:00Z", null]]
+    }
+  },
+  "summaries": {
+    "platform": ["sentinel-1a", "sentinel-1b", "sentinel-1c"],
+    "instruments": ["c-sar"],
+    "constellation": ["sentinel-1"],
+    "sar:instrument_mode": ["IW", "EW", "SM"],
+    "sar:frequency_band": ["C"],
+    "sar:polarizations": [["VV"], ["VH"], ["VV", "VH"], ["HH"], ["HV"], ["HH", "HV"]],
+    "sar:product_type": ["GRD"],
+    "sat:orbit_state": ["ascending", "descending"],
+    "processing:level": ["L1"]
+  },
+  "stac_extensions": [
+    "https://stac-extensions.github.io/sar/v1.0.0/schema.json",
+    "https://stac-extensions.github.io/sat/v1.0.0/schema.json",
+    "https://stac-extensions.github.io/processing/v1.0.0/schema.json"
+  ]
+}

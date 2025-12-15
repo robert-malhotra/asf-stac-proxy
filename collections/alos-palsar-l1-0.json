@@ -1,12 +1,12 @@
 {
-  "id": "alos-palsar",
-  "title": "ALOS PALSAR",
-  "description": "ALOS PALSAR L-band synthetic aperture radar data from JAXA",
+  "id": "alos-palsar-l1-0",
+  "title": "ALOS PALSAR - Level 1.0",
+  "description": "ALOS PALSAR Level 1.0 products from JAXA. Level 1.0 data is raw signal data reconstructed to zero-Doppler slant range.",
   "asf_datasets": ["ALOS"],
   "asf_platforms": ["ALOS"],
-  "asf_processing_levels": ["L1.0", "L1.1", "L1.5"],
+  "asf_processing_level": "L1.0",
   "cmr": {
-    "short_names": ["ALOS_PALSAR_LEVEL1.0", "ALOS_PALSAR_LEVEL1.1", "ALOS_PALSAR_LEVEL1.5"],
+    "short_names": ["ALOS_PALSAR_LEVEL1.0"],
     "provider": "ASF"
   },
   "license": "proprietary",
@@ -38,7 +38,9 @@
     "sar:instrument_mode": ["FBS", "FBD", "PLR", "WB1", "WB2"],
     "sar:frequency_band": ["L"],
     "sar:polarizations": [["HH"], ["HV"], ["VV"], ["VH"], ["HH", "HV"], ["VV", "VH"]],
-    "sat:orbit_state": ["ascending", "descending"]
+    "sar:product_type": ["L1.0"],
+    "sat:orbit_state": ["ascending", "descending"],
+    "processing:level": ["L1"]
   },
   "stac_extensions": [
     "https://stac-extensions.github.io/sar/v1.0.0/schema.json",

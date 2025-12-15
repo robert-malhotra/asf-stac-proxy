@@ -196,19 +196,56 @@ func (b *CMRBackend) toCMRParams(params *backend.SearchParams) (*SearchParams, e
 func (b *CMRBackend) determineCollection(granule *UMMGranule) string {
 	shortName := granule.CollectionReference.ShortName
 
-	// Check all collections for matching CMR short name
+	// Get processing level from granule (may be empty)
+	processingLevel := ""
+	if levels := granule.GetAdditionalAttribute("PROCESSING_LEVEL"); len(levels) > 0 {
+		processingLevel = levels[0]
+	} else if levels := granule.GetAdditionalAttribute("PROCESSING_TYPE"); len(levels) > 0 {
+		processingLevel = levels[0]
+	}
+
+	// Check all collections for matching CMR short name AND processing level
+	for _, coll := range b.collections.All() {
+		shortNameMatch := false
+		if coll.CMR != nil {
+			for _, sn := range coll.CMR.ShortNames {
+				if sn == shortName {
+					shortNameMatch = true
+					break
+				}
+			}
+		}
+		// Also check ASF datasets as fallback for short name matching
+		if !shortNameMatch {
+			for _, ds := range coll.ASFDatasets {
+				if ds == shortName {
+					shortNameMatch = true
+					break
+				}
+			}
+		}
+
+		if shortNameMatch {
+			// If collection has a specific processing level, it must match
+			if coll.ASFProcessingLevel != "" {
+				if coll.ASFProcessingLevel == processingLevel {
+					return coll.ID
+				}
+			} else {
+				// Collection has no processing level filter, accept any
+				return coll.ID
+			}
+		}
+	}
+
+	// Fallback: try to find by short name only (no processing level match required)
+	// This handles cases where processing level is not available in granule metadata
 	for _, coll := range b.collections.All() {
 		if coll.CMR != nil {
 			for _, sn := range coll.CMR.ShortNames {
 				if sn == shortName {
 					return coll.ID
 				}
-			}
-		}
-		// Also check ASF datasets as fallback
-		for _, ds := range coll.ASFDatasets {
-			if ds == shortName {
-				return coll.ID
 			}
 		}
 	}

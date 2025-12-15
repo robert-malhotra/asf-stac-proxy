@@ -12,18 +12,18 @@ import (
 // to one or more ASF datasets. This is typically loaded from JSON files
 // in the collections directory.
 type CollectionConfig struct {
-	ID                   string                 `json:"id"`
-	Title                string                 `json:"title"`
-	Description          string                 `json:"description"`
-	ASFDatasets          []string               `json:"asf_datasets"`
-	ASFPlatforms         []string               `json:"asf_platforms,omitempty"`
-	ASFProcessingLevels  []string               `json:"asf_processing_levels,omitempty"`
-	CMR                  *CMRMapping            `json:"cmr,omitempty"`
-	License              string                 `json:"license"`
-	Providers            []Provider             `json:"providers,omitempty"`
-	Extent               Extent                 `json:"extent"`
-	Summaries            map[string]interface{} `json:"summaries,omitempty"`
-	Extensions           []string               `json:"stac_extensions,omitempty"`
+	ID                  string                 `json:"id"`
+	Title               string                 `json:"title"`
+	Description         string                 `json:"description"`
+	ASFDatasets         []string               `json:"asf_datasets"`
+	ASFPlatforms        []string               `json:"asf_platforms,omitempty"`
+	ASFProcessingLevel  string                 `json:"asf_processing_level,omitempty"`
+	CMR                 *CMRMapping            `json:"cmr,omitempty"`
+	License             string                 `json:"license"`
+	Providers           []Provider             `json:"providers,omitempty"`
+	Extent              Extent                 `json:"extent"`
+	Summaries           map[string]interface{} `json:"summaries,omitempty"`
+	Extensions          []string               `json:"stac_extensions,omitempty"`
 }
 
 // CMRMapping contains CMR-specific configuration for a collection.
@@ -251,14 +251,14 @@ func (r *CollectionRegistry) GetASFDatasets(collectionID string) []string {
 	return collection.ASFDatasets
 }
 
-// GetASFProcessingLevels returns the ASF processing levels for the given collection ID.
-// Returns nil if the collection does not exist or has no processing levels configured.
-func (r *CollectionRegistry) GetASFProcessingLevels(collectionID string) []string {
+// GetASFProcessingLevel returns the ASF processing level for the given collection ID.
+// Returns empty string if the collection does not exist or has no processing level configured.
+func (r *CollectionRegistry) GetASFProcessingLevel(collectionID string) string {
 	collection := r.Get(collectionID)
 	if collection == nil {
-		return nil
+		return ""
 	}
-	return collection.ASFProcessingLevels
+	return collection.ASFProcessingLevel
 }
 
 // FindByASFDataset returns all collections that include the specified ASF dataset.
@@ -273,4 +273,19 @@ func (r *CollectionRegistry) FindByASFDataset(dataset string) []*CollectionConfi
 		}
 	}
 	return matches
+}
+
+// FindByASFDatasetAndLevel returns the collection that matches both the ASF dataset and processing level.
+// Returns nil if no matching collection is found.
+func (r *CollectionRegistry) FindByASFDatasetAndLevel(dataset, level string) *CollectionConfig {
+	for _, collection := range r.collections {
+		if collection.ASFProcessingLevel == level {
+			for _, ds := range collection.ASFDatasets {
+				if ds == dataset {
+					return collection
+				}
+			}
+		}
+	}
+	return nil
 }

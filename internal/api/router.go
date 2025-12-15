@@ -181,8 +181,14 @@ func (h *Handlers) Queryables(w http.ResponseWriter, r *http.Request) {
 				properties["platform"].(map[string]interface{})["enum"] = platforms
 			}
 		}
-		if levels := h.collections.GetASFProcessingLevels(collectionID); len(levels) > 0 {
-			properties["processing:level"].(map[string]interface{})["enum"] = levels
+		// Only add processing:level queryable for UAVSAR (which has multiple processing levels)
+		// Other collections are already split by processing level, so filtering doesn't apply
+		if collectionID == "uavsar" {
+			properties["processing:level"] = map[string]interface{}{
+				"type":        "string",
+				"title":       "Processing Level",
+				"description": "Product processing level",
+			}
 		}
 	}
 

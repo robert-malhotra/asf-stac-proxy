@@ -1,0 +1,50 @@
+{
+  "id": "alos-palsar-l1-5",
+  "title": "ALOS PALSAR - Level 1.5",
+  "description": "ALOS PALSAR Level 1.5 products from JAXA. Level 1.5 data is multi-look complex data projected to ground range.",
+  "asf_datasets": ["ALOS"],
+  "asf_platforms": ["ALOS"],
+  "asf_processing_level": "L1.5",
+  "cmr": {
+    "short_names": ["ALOS_PALSAR_LEVEL1.5"],
+    "provider": "ASF"
+  },
+  "license": "proprietary",
+  "providers": [
+    {
+      "name": "JAXA",
+      "description": "Japan Aerospace Exploration Agency",
+      "roles": ["producer", "licensor"],
+      "url": "https://www.jaxa.jp"
+    },
+    {
+      "name": "Alaska Satellite Facility",
+      "description": "ASF DAAC",
+      "roles": ["processor", "host"],
+      "url": "https://asf.alaska.edu"
+    }
+  ],
+  "extent": {
+    "spatial": {
+      "bbox": [[-180, -90, 180, 90]]
+    },
+    "temporal": {
+      "interval": [["2006-05-16T00:00:00Z", "2011-04-22T00:00:00Z"]]
+    }
+  },
+  "summaries": {
+    "platform": ["alos"],
+    "instruments": ["palsar"],
+    "sar:instrument_mode": ["FBS", "FBD", "PLR", "WB1", "WB2"],
+    "sar:frequency_band": ["L"],
+    "sar:polarizations": [["HH"], ["HV"], ["VV"], ["VH"], ["HH", "HV"], ["VV", "VH"]],
+    "sar:product_type": ["L1.5"],
+    "sat:orbit_state": ["ascending", "descending"],
+    "processing:level": ["L1"]
+  },
+  "stac_extensions": [
+    "https://stac-extensions.github.io/sar/v1.0.0/schema.json",
+    "https://stac-extensions.github.io/sat/v1.0.0/schema.json",
+    "https://stac-extensions.github.io/processing/v1.0.0/schema.json"
+  ]
+}

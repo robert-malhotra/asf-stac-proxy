@@ -41,7 +41,7 @@ func ExampleLoadCollections() {
 	}
 
 	// Get a specific collection
-	if collection := registry.Get("sentinel-1"); collection != nil {
+	if collection := registry.Get("sentinel-1-slc"); collection != nil {
 		fmt.Printf("Collection ID: %s\n", collection.ID)
 		fmt.Printf("Title: %s\n", collection.Title)
 		fmt.Printf("ASF Datasets: %v\n", collection.ASFDatasets)
@@ -51,10 +51,10 @@ func ExampleLoadCollections() {
 	fmt.Printf("Total collections: %d\n", registry.Count())
 
 	// Output:
-	// Collection ID: sentinel-1
-	// Title: Sentinel-1 SAR
+	// Collection ID: sentinel-1-slc
+	// Title: Sentinel-1 SAR - Single Look Complex (SLC)
 	// ASF Datasets: [SENTINEL-1]
-	// Total collections: 6
+	// Total collections: 14
 }
 
 func ExampleCollectionRegistry_FindByASFDataset() {

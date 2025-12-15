@@ -1,12 +1,12 @@
 {
-  "id": "ers",
-  "title": "ERS-1 & ERS-2",
-  "description": "European Remote Sensing satellite SAR data from ESA",
+  "id": "ers-l0",
+  "title": "ERS-1 & ERS-2 - Level 0",
+  "description": "European Remote Sensing satellite Level 0 (raw signal data) from ESA",
   "asf_datasets": ["ERS-1", "ERS-2"],
   "asf_platforms": ["ERS-1", "ERS-2"],
-  "asf_processing_levels": ["L0", "L1"],
+  "asf_processing_level": "L0",
   "cmr": {
-    "short_names": ["ERS-1_LEVEL0", "ERS-1_LEVEL1", "ERS-2_LEVEL0", "ERS-2_LEVEL1"],
+    "short_names": ["ERS-1_LEVEL0", "ERS-2_LEVEL0"],
     "provider": "ASF"
   },
   "license": "proprietary",
@@ -38,7 +38,9 @@
     "sar:instrument_mode": ["STD"],
     "sar:frequency_band": ["C"],
     "sar:polarizations": [["VV"]],
-    "sat:orbit_state": ["ascending", "descending"]
+    "sar:product_type": ["L0"],
+    "sat:orbit_state": ["ascending", "descending"],
+    "processing:level": ["L0"]
   },
   "stac_extensions": [
     "https://stac-extensions.github.io/sar/v1.0.0/schema.json",

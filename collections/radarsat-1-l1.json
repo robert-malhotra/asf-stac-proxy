@@ -1,12 +1,12 @@
 {
-  "id": "radarsat-1",
-  "title": "RADARSAT-1",
-  "description": "RADARSAT-1 C-band synthetic aperture radar data from the Canadian Space Agency",
+  "id": "radarsat-1-l1",
+  "title": "RADARSAT-1 - Level 1",
+  "description": "RADARSAT-1 Level 1 (processed SAR imagery) from the Canadian Space Agency",
   "asf_datasets": ["RADARSAT-1"],
   "asf_platforms": ["RADARSAT-1"],
-  "asf_processing_levels": ["L0", "L1"],
+  "asf_processing_level": "L1",
   "cmr": {
-    "short_names": ["RADARSAT-1_LEVEL0", "RADARSAT-1_LEVEL1"],
+    "short_names": ["RADARSAT-1_LEVEL1"],
     "provider": "ASF"
   },
   "license": "proprietary",
@@ -38,7 +38,9 @@
     "sar:instrument_mode": ["Standard", "Wide", "Fine", "ScanSAR Narrow", "ScanSAR Wide", "Extended High", "Extended Low"],
     "sar:frequency_band": ["C"],
     "sar:polarizations": [["HH"]],
-    "sat:orbit_state": ["ascending", "descending"]
+    "sar:product_type": ["L1"],
+    "sat:orbit_state": ["ascending", "descending"],
+    "processing:level": ["L1"]
   },
   "stac_extensions": [
     "https://stac-extensions.github.io/sar/v1.0.0/schema.json",

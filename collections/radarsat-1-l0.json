@@ -1,0 +1,50 @@
+{
+  "id": "radarsat-1-l0",
+  "title": "RADARSAT-1 - Level 0",
+  "description": "RADARSAT-1 Level 0 (raw signal data) from the Canadian Space Agency",
+  "asf_datasets": ["RADARSAT-1"],
+  "asf_platforms": ["RADARSAT-1"],
+  "asf_processing_level": "L0",
+  "cmr": {
+    "short_names": ["RADARSAT-1_LEVEL0"],
+    "provider": "ASF"
+  },
+  "license": "proprietary",
+  "providers": [
+    {
+      "name": "CSA",
+      "description": "Canadian Space Agency",
+      "roles": ["producer", "licensor"],
+      "url": "https://www.asc-csa.gc.ca"
+    },
+    {
+      "name": "Alaska Satellite Facility",
+      "description": "ASF DAAC",
+      "roles": ["processor", "host"],
+      "url": "https://asf.alaska.edu"
+    }
+  ],
+  "extent": {
+    "spatial": {
+      "bbox": [[-180, -90, 180, 90]]
+    },
+    "temporal": {
+      "interval": [["1995-11-04T00:00:00Z", "2013-03-29T00:00:00Z"]]
+    }
+  },
+  "summaries": {
+    "platform": ["radarsat-1"],
+    "instruments": ["sar"],
+    "sar:instrument_mode": ["Standard", "Wide", "Fine", "ScanSAR Narrow", "ScanSAR Wide", "Extended High", "Extended Low"],
+    "sar:frequency_band": ["C"],
+    "sar:polarizations": [["HH"]],
+    "sar:product_type": ["L0"],
+    "sat:orbit_state": ["ascending", "descending"],
+    "processing:level": ["L0"]
+  },
+  "stac_extensions": [
+    "https://stac-extensions.github.io/sar/v1.0.0/schema.json",
+    "https://stac-extensions.github.io/sat/v1.0.0/schema.json",
+    "https://stac-extensions.github.io/processing/v1.0.0/schema.json"
+  ]
+}

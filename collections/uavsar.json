@@ -4,7 +4,6 @@
   "description": "Uninhabited Aerial Vehicle Synthetic Aperture Radar airborne SAR data from NASA JPL",
   "asf_datasets": ["UAVSAR"],
   "asf_platforms": ["G-III"],
-  "asf_processing_levels": ["COMPLEX", "DEM_TIFF", "INC", "KMZ", "PAULI", "PROJECTED", "PROJECTED_ML3X3", "PROJECTED_ML5X5", "SLOPE", "STOKES"],
   "cmr": {
     "short_names": ["UAVSAR_POLSAR_SLC", "UAVSAR_POLSAR_GRD", "UAVSAR_INSAR_SLC", "UAVSAR_INSAR_GRD"],
     "provider": "ASF"

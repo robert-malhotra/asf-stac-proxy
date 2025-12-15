@@ -1,0 +1,51 @@
+{
+  "id": "sentinel-1-slc",
+  "title": "Sentinel-1 SAR - Single Look Complex (SLC)",
+  "description": "Sentinel-1 Single Look Complex (SLC) products from the European Space Agency. SLC products are focused SAR data with full resolution complex samples, preserving amplitude and phase information.",
+  "asf_datasets": ["SENTINEL-1"],
+  "asf_platforms": ["Sentinel-1A", "Sentinel-1B", "Sentinel-1C"],
+  "asf_processing_level": "SLC",
+  "cmr": {
+    "short_names": ["SENTINEL-1A_SLC", "SENTINEL-1B_SLC", "SENTINEL-1C_SLC"],
+    "provider": "ASF"
+  },
+  "license": "proprietary",
+  "providers": [
+    {
+      "name": "ESA",
+      "description": "European Space Agency",
+      "roles": ["producer", "licensor"],
+      "url": "https://www.esa.int"
+    },
+    {
+      "name": "Alaska Satellite Facility",
+      "description": "ASF DAAC",
+      "roles": ["processor", "host"],
+      "url": "https://asf.alaska.edu"
+    }
+  ],
+  "extent": {
+    "spatial": {
+      "bbox": [[-180, -90, 180, 90]]
+    },
+    "temporal": {
+      "interval": [["2014-04-03T00:00:00Z", null]]
+    }
+  },
+  "summaries": {
+    "platform": ["sentinel-1a", "sentinel-1b", "sentinel-1c"],
+    "instruments": ["c-sar"],
+    "constellation": ["sentinel-1"],
+    "sar:instrument_mode": ["IW", "EW", "SM", "WV"],
+    "sar:frequency_band": ["C"],
+    "sar:polarizations": [["VV"], ["VH"], ["VV", "VH"], ["HH"], ["HV"], ["HH", "HV"]],
+    "sar:product_type": ["SLC"],
+    "sat:orbit_state": ["ascending", "descending"],
+    "processing:level": ["L1"]
+  },
+  "stac_extensions": [
+    "https://stac-extensions.github.io/sar/v1.0.0/schema.json",
+    "https://stac-extensions.github.io/sat/v1.0.0/schema.json",
+    "https://stac-extensions.github.io/processing/v1.0.0/schema.json"
+  ]
+}
