@@ -616,6 +616,206 @@ func TestHandlers_Search_FilterParsedFromGETQueryParams(t *testing.T) {
 	}
 }
 
+func TestHandlers_Search_PlatformFilterExtracted(t *testing.T) {
+	// Test that platform filter is correctly extracted from CQL2-JSON and normalized to ASF format
+	// This ensures filtering by lowercase platform (as shown in STAC items) works correctly
+
+	baseTime := time.Date(2024, 1, 15, 12, 0, 0, 0, time.UTC)
+
+	items := make([]*gostac.Item, 5)
+	for i := 0; i < 5; i++ {
+		items[i] = createTestItem(fmt.Sprintf("item-%03d", i), baseTime.Add(-time.Duration(i)*time.Hour))
+		items[i].Properties["platform"] = "sentinel-1b"
+	}
+
+	mock := &mockBackend{
+		items:              items,
+		supportsPagination: false,
+	}
+
+	cfg := createTestConfig()
+	cfg.Features.DefaultLimit = 10
+	cfg.Features.EnableSearch = true
+	collections := createTestCollections()
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+	translator := translate.NewTranslator(cfg, collections, logger)
+	cursorStore := stac.NewMemoryCursorStore(time.Hour, 5*time.Minute)
+	defer cursorStore.Stop()
+
+	handlers := NewHandlers(cfg, mock, translator, collections, logger).WithCursorStore(cursorStore)
+
+	// Test cases for different platform filter formats
+	testCases := []struct {
+		name             string
+		inputPlatform    string
+		expectedPlatform string
+	}{
+		{
+			name:             "lowercase sentinel-1b",
+			inputPlatform:    "sentinel-1b",
+			expectedPlatform: "Sentinel-1B",
+		},
+		{
+			name:             "lowercase sentinel-1a",
+			inputPlatform:    "sentinel-1a",
+			expectedPlatform: "Sentinel-1A",
+		},
+		{
+			name:             "lowercase sentinel-1c",
+			inputPlatform:    "sentinel-1c",
+			expectedPlatform: "Sentinel-1C",
+		},
+		{
+			name:             "already capitalized",
+			inputPlatform:    "Sentinel-1B",
+			expectedPlatform: "Sentinel-1B",
+		},
+		{
+			name:             "uppercase",
+			inputPlatform:    "SENTINEL-1A",
+			expectedPlatform: "Sentinel-1A",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Reset mock search calls
+			mock.searchCalls = nil
+
+			// POST search with platform filter (as users would filter based on STAC item values)
+			body := fmt.Sprintf(`{
+				"collections": ["sentinel-1"],
+				"limit": 10,
+				"filter": {
+					"op": "=",
+					"args": [{"property": "platform"}, "%s"]
+				},
+				"filter-lang": "cql2-json"
+			}`, tc.inputPlatform)
+
+			req := httptest.NewRequest("POST", "/search", strings.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+
+			w := httptest.NewRecorder()
+			handlers.Search(w, req)
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+			}
+
+			// Verify backend received the normalized platform value
+			if len(mock.searchCalls) == 0 {
+				t.Fatal("Expected at least one search call to backend")
+			}
+
+			lastCall := mock.searchCalls[len(mock.searchCalls)-1]
+			if len(lastCall.Platform) == 0 {
+				t.Fatal("Expected Platform filter to be set in backend call")
+			}
+
+			if lastCall.Platform[0] != tc.expectedPlatform {
+				t.Errorf("Expected Platform filter %q, got %q", tc.expectedPlatform, lastCall.Platform[0])
+			}
+		})
+	}
+}
+
+func TestHandlers_Search_PlatformFilterInOperator(t *testing.T) {
+	// Test platform filter with "in" operator for multiple platforms
+
+	baseTime := time.Date(2024, 1, 15, 12, 0, 0, 0, time.UTC)
+
+	items := make([]*gostac.Item, 5)
+	for i := 0; i < 5; i++ {
+		items[i] = createTestItem(fmt.Sprintf("item-%03d", i), baseTime)
+	}
+
+	mock := &mockBackend{
+		items:              items,
+		supportsPagination: false,
+	}
+
+	cfg := createTestConfig()
+	cfg.Features.EnableSearch = true
+	collections := createTestCollections()
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+	translator := translate.NewTranslator(cfg, collections, logger)
+	cursorStore := stac.NewMemoryCursorStore(time.Hour, 5*time.Minute)
+	defer cursorStore.Stop()
+
+	handlers := NewHandlers(cfg, mock, translator, collections, logger).WithCursorStore(cursorStore)
+
+	// POST search with "in" operator for multiple platforms
+	body := `{
+		"collections": ["sentinel-1"],
+		"limit": 10,
+		"filter": {
+			"op": "in",
+			"args": [{"property": "platform"}, ["sentinel-1a", "sentinel-1b"]]
+		},
+		"filter-lang": "cql2-json"
+	}`
+
+	req := httptest.NewRequest("POST", "/search", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	handlers.Search(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Verify backend received both platforms normalized
+	if len(mock.searchCalls) == 0 {
+		t.Fatal("Expected at least one search call to backend")
+	}
+
+	lastCall := mock.searchCalls[len(mock.searchCalls)-1]
+	if len(lastCall.Platform) != 2 {
+		t.Fatalf("Expected 2 Platform values, got %d: %v", len(lastCall.Platform), lastCall.Platform)
+	}
+
+	// Check both platforms are normalized
+	expectedPlatforms := map[string]bool{"Sentinel-1A": true, "Sentinel-1B": true}
+	for _, p := range lastCall.Platform {
+		if !expectedPlatforms[p] {
+			t.Errorf("Unexpected platform value %q, expected Sentinel-1A or Sentinel-1B", p)
+		}
+	}
+}
+
+func TestNormalizePlatformForASF(t *testing.T) {
+	// Unit test for the normalizePlatformForASF helper function
+
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"sentinel-1a", "Sentinel-1A"},
+		{"sentinel-1b", "Sentinel-1B"},
+		{"sentinel-1c", "Sentinel-1C"},
+		{"SENTINEL-1A", "Sentinel-1A"},
+		{"Sentinel-1A", "Sentinel-1A"},
+		{"alos", "ALOS"},
+		{"ALOS", "ALOS"},
+		{"ers-1", "ERS-1"},
+		{"ers-2", "ERS-2"},
+		{"radarsat-1", "RADARSAT-1"},
+		{"uavsar", "UAVSAR"},
+		{"unknown-platform", "unknown-platform"}, // Unknown platforms pass through unchanged
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			result := normalizePlatformForASF(tt.input)
+			if result != tt.expected {
+				t.Errorf("normalizePlatformForASF(%q) = %q, want %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
 func TestHandlers_Items_OverFetchCappedAtMaxLimit(t *testing.T) {
 	// Test that over-fetch doesn't exceed MaxLimit
 

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/planetlabs/go-ogc/filter"
 	"github.com/planetlabs/go-stac"
 	"github.com/rkm/asf-stac-proxy/internal/backend"
 	"github.com/rkm/asf-stac-proxy/internal/config"
@@ -248,8 +250,15 @@ func (h *Handlers) Items(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Set context with pagination metadata
+	// For ASF backend: only report TotalCount on first page - subsequent pages have
+	// modified queries that return remaining count, not total count
+	// For CMR backend: always report TotalCount since it uses native pagination
 	limit := searchReq.Limit
-	itemCollection.SetContext(len(itemCollection.Features), limit, result.TotalCount)
+	totalCount := result.TotalCount
+	if !h.backend.SupportsPagination() && currentCursor != nil {
+		totalCount = nil // Don't report inaccurate count on paginated ASF requests
+	}
+	itemCollection.SetContext(len(itemCollection.Features), limit, totalCount)
 
 	// Add standard links
 	baseURL := h.cfg.STAC.BaseURL
@@ -468,8 +477,15 @@ func (h *Handlers) Search(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Set context with pagination metadata
+	// For ASF backend: only report TotalCount on first page - subsequent pages have
+	// modified queries that return remaining count, not total count
+	// For CMR backend: always report TotalCount since it uses native pagination
 	limit := searchReq.Limit
-	itemCollection.SetContext(len(itemCollection.Features), limit, result.TotalCount)
+	totalCount := result.TotalCount
+	if !h.backend.SupportsPagination() && currentCursor != nil {
+		totalCount = nil // Don't report inaccurate count on paginated ASF requests
+	}
+	itemCollection.SetContext(len(itemCollection.Features), limit, totalCount)
 
 	// Add standard links
 	baseURL := h.cfg.STAC.BaseURL
@@ -711,92 +727,143 @@ func (h *Handlers) buildBackendParams(req *intstac.SearchRequest, collectionID s
 	return params
 }
 
-// extractFilterParams extracts SAR-specific parameters from CQL2 filter.
-func (h *Handlers) extractFilterParams(filter interface{}, params *backend.SearchParams) {
-	// Filter can be a map (CQL2-JSON) or string (CQL2-Text)
-	filterMap, ok := filter.(map[string]interface{})
-	if !ok {
-		h.logger.Debug("extractFilterParams: filter is not a map", slog.String("type", fmt.Sprintf("%T", filter)))
+// extractFilterParams extracts SAR-specific parameters from CQL2 filter using go-ogc library.
+func (h *Handlers) extractFilterParams(filterData interface{}, params *backend.SearchParams) {
+	// Marshal the filter back to JSON so we can use go-ogc to parse it
+	filterJSON, err := json.Marshal(filterData)
+	if err != nil {
+		h.logger.Debug("extractFilterParams: failed to marshal filter", slog.String("error", err.Error()))
 		return
 	}
 
-	h.logger.Debug("extractFilterParams: processing filter", slog.Any("filter", filterMap))
+	// Parse using go-ogc filter library
+	var f filter.Filter
+	if err := json.Unmarshal(filterJSON, &f); err != nil {
+		h.logger.Debug("extractFilterParams: failed to parse CQL2 filter", slog.String("error", err.Error()))
+		return
+	}
 
-	// Look for known properties in the filter
-	extractPropertyValues(filterMap, "sar:polarizations", func(vals []string) {
-		h.logger.Debug("extractFilterParams: found sar:polarizations", slog.Any("vals", vals))
+	if f.Expression == nil {
+		h.logger.Debug("extractFilterParams: filter has no expression")
+		return
+	}
+
+	// Extract property values from the parsed filter
+	propertyValues := make(map[string][]string)
+	extractPropertiesFromExpression(f.Expression, propertyValues)
+
+	h.logger.Debug("extractFilterParams: extracted properties", slog.Any("properties", propertyValues))
+
+	// Map extracted properties to backend params
+	if vals, ok := propertyValues["sar:polarizations"]; ok {
 		params.Polarization = vals
-	})
-	extractPropertyValues(filterMap, "sar:instrument_mode", func(vals []string) {
-		h.logger.Debug("extractFilterParams: found sar:instrument_mode", slog.Any("vals", vals))
+	}
+	if vals, ok := propertyValues["sar:instrument_mode"]; ok {
 		params.BeamMode = vals
-	})
-	extractPropertyValues(filterMap, "sat:orbit_state", func(vals []string) {
-		h.logger.Debug("extractFilterParams: found sat:orbit_state", slog.Any("vals", vals))
-		if len(vals) > 0 {
-			params.FlightDirection = vals[0]
-		}
-	})
-	extractPropertyValues(filterMap, "processing:level", func(vals []string) {
-		h.logger.Debug("extractFilterParams: found processing:level", slog.Any("vals", vals))
+	}
+	if vals, ok := propertyValues["sat:orbit_state"]; ok && len(vals) > 0 {
+		params.FlightDirection = vals[0]
+	}
+	if vals, ok := propertyValues["processing:level"]; ok {
 		params.ProcessingLevel = vals
-	})
+	}
 	// sar:product_type maps to processing level (e.g., SLC, GRD, RAW)
-	extractPropertyValues(filterMap, "sar:product_type", func(vals []string) {
-		h.logger.Debug("extractFilterParams: found sar:product_type", slog.Any("vals", vals))
+	if vals, ok := propertyValues["sar:product_type"]; ok {
 		params.ProcessingLevel = vals
-	})
+	}
+	// platform filter (e.g., "sentinel-1a" -> "Sentinel-1A")
+	if vals, ok := propertyValues["platform"]; ok {
+		normalized := make([]string, len(vals))
+		for i, v := range vals {
+			normalized[i] = normalizePlatformForASF(v)
+		}
+		params.Platform = normalized
+	}
 
-	h.logger.Debug("extractFilterParams: final params", slog.Any("processingLevel", params.ProcessingLevel))
+	h.logger.Debug("extractFilterParams: final params",
+		slog.Any("processingLevel", params.ProcessingLevel),
+		slog.Any("platform", params.Platform))
 }
 
-// extractPropertyValues extracts property values from a CQL2 filter recursively.
-func extractPropertyValues(filter map[string]interface{}, property string, setter func([]string)) {
-	// Check for "op" field indicating a comparison
-	op, hasOp := filter["op"].(string)
-	args, hasArgs := filter["args"].([]interface{})
-
-	if hasOp && hasArgs && (op == "=" || op == "eq" || op == "in") {
-		for _, arg := range args {
-			// Check if this is a property reference
-			if propMap, ok := arg.(map[string]interface{}); ok {
-				if propName, ok := propMap["property"].(string); ok && propName == property {
-					// Found the property, extract the value(s)
-					for _, other := range args {
-						switch v := other.(type) {
-						case string:
-							setter([]string{v})
-							return
-						case []interface{}:
-							vals := make([]string, 0, len(v))
-							for _, item := range v {
-								if s, ok := item.(string); ok {
-									vals = append(vals, s)
-								}
-							}
-							if len(vals) > 0 {
-								setter(vals)
-								return
-							}
-						}
-					}
+// extractPropertiesFromExpression recursively extracts property-value pairs from a CQL2 expression.
+func extractPropertiesFromExpression(expr filter.Expression, result map[string][]string) {
+	switch e := expr.(type) {
+	case *filter.And:
+		for _, arg := range e.Args {
+			extractPropertiesFromExpression(arg, result)
+		}
+	case *filter.Or:
+		for _, arg := range e.Args {
+			extractPropertiesFromExpression(arg, result)
+		}
+	case *filter.Not:
+		extractPropertiesFromExpression(e.Arg, result)
+	case *filter.Comparison:
+		// Handle equality comparisons: property = value
+		if e.Name == filter.Equals || e.Name == "eq" {
+			propName := getPropertyName(e.Left)
+			if propName != "" {
+				if val := getStringValue(e.Right); val != "" {
+					result[propName] = append(result[propName], val)
+				}
+			}
+		}
+	case *filter.In:
+		// Handle "in" operator: property IN [value1, value2, ...]
+		propName := getPropertyName(e.Item)
+		if propName != "" {
+			for _, item := range e.List {
+				if val := getStringValue(item); val != "" {
+					result[propName] = append(result[propName], val)
 				}
 			}
 		}
 	}
+}
 
-	// Recursively search in nested structures
-	for _, v := range filter {
-		if nested, ok := v.(map[string]interface{}); ok {
-			extractPropertyValues(nested, property, setter)
-		} else if arr, ok := v.([]interface{}); ok {
-			for _, item := range arr {
-				if nested, ok := item.(map[string]interface{}); ok {
-					extractPropertyValues(nested, property, setter)
-				}
-			}
-		}
+// getPropertyName extracts the property name from a scalar expression.
+func getPropertyName(expr filter.ScalarExpression) string {
+	if prop, ok := expr.(*filter.Property); ok {
+		return prop.Name
 	}
+	return ""
+}
+
+// getStringValue extracts a string value from a scalar expression.
+func getStringValue(expr filter.ScalarExpression) string {
+	if str, ok := expr.(*filter.String); ok {
+		return str.Value
+	}
+	return ""
+}
+
+// normalizePlatformForASF converts STAC lowercase platform names to ASF format.
+// STAC items display lowercase platforms (e.g., "sentinel-1a"), but ASF API
+// expects specific capitalization (e.g., "Sentinel-1A").
+func normalizePlatformForASF(platform string) string {
+	lower := strings.ToLower(platform)
+
+	// Known platform mappings (STAC lowercase -> ASF format)
+	platformMap := map[string]string{
+		"sentinel-1a": "Sentinel-1A",
+		"sentinel-1b": "Sentinel-1B",
+		"sentinel-1c": "Sentinel-1C",
+		"alos":        "ALOS",
+		"ers-1":       "ERS-1",
+		"ers-2":       "ERS-2",
+		"jers-1":      "JERS-1",
+		"radarsat-1":  "RADARSAT-1",
+		"seasat":      "SEASAT",
+		"uavsar":      "UAVSAR",
+		"airsar":      "AIRSAR",
+	}
+
+	if asfName, ok := platformMap[lower]; ok {
+		return asfName
+	}
+
+	// If not in map, return original value
+	return platform
 }
 
 // buildNextURLWithCursor constructs a URL with a cursor parameter for pagination.

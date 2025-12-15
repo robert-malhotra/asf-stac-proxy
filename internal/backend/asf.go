@@ -158,18 +158,19 @@ func (b *ASFBackend) toASFParams(params *SearchParams) (*asf.SearchParams, error
 	asfParams.FlightDirection = params.FlightDirection
 	asfParams.RelativeOrbit = params.RelativeOrbit
 	asfParams.AbsoluteOrbit = params.AbsoluteOrbit
+	asfParams.Platform = params.Platform
 
 	// Apply processing level filter
 	// If user specified processing levels, use those
-	// Otherwise, use collection-configured levels to exclude metadata products
+	// Otherwise, use collection-configured level (each collection now has at most one)
 	if len(params.ProcessingLevel) > 0 {
 		asfParams.ProcessingLevel = params.ProcessingLevel
 	} else if len(params.Collections) > 0 {
 		// Aggregate processing levels from all collections
 		levelSet := make(map[string]bool)
 		for _, collID := range params.Collections {
-			levels := b.collections.GetASFProcessingLevels(collID)
-			for _, level := range levels {
+			level := b.collections.GetASFProcessingLevel(collID)
+			if level != "" {
 				levelSet[level] = true
 			}
 		}
@@ -198,13 +199,26 @@ func (b *ASFBackend) toASFParams(params *SearchParams) (*asf.SearchParams, error
 
 // determineCollection determines the STAC collection ID for an ASF feature.
 func (b *ASFBackend) determineCollection(feature *asf.ASFFeature) string {
-	// Try to find collection by platform
 	platform := feature.Properties.Platform
+	processingLevel := feature.Properties.ProcessingLevel
 
-	// Check all collections for matching platform
+	// Find collection matching platform AND processing level
 	for _, coll := range b.collections.All() {
+		platformMatch := false
 		for _, p := range coll.ASFPlatforms {
 			if p == platform {
+				platformMatch = true
+				break
+			}
+		}
+		if platformMatch {
+			// If collection has a specific processing level, it must match
+			if coll.ASFProcessingLevel != "" {
+				if coll.ASFProcessingLevel == processingLevel {
+					return coll.ID
+				}
+			} else {
+				// Collection has no processing level filter (like UAVSAR), accept any
 				return coll.ID
 			}
 		}

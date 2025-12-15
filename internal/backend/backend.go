@@ -54,6 +54,7 @@ type SearchParams struct {
 	RelativeOrbit   []int
 	AbsoluteOrbit   []int
 	ProcessingLevel []string
+	Platform        []string // Platform names (e.g., "Sentinel-1A", "Sentinel-1B")
 
 	// Sorting
 	SortField     string // Field to sort by

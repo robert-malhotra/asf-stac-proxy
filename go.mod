@@ -12,4 +12,5 @@ require (
 require (
 	github.com/Masterminds/semver/v3 v3.3.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.3.0 // indirect
+	github.com/planetlabs/go-ogc v0.13.0 // indirect
 )
