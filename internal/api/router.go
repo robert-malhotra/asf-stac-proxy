@@ -130,7 +130,7 @@ func (h *Handlers) Queryables(w http.ResponseWriter, r *http.Request) {
 			"type":        "string",
 		},
 		"sar:polarizations": map[string]interface{}{
-			"description": "SAR polarization mode (e.g., VV, VH, HH, HV)",
+			"description": "SAR polarization combinations (e.g., [VV], [VV, VH])",
 			"type":        "array",
 			"items":       map[string]interface{}{"type": "string"},
 		},
@@ -138,12 +138,15 @@ func (h *Handlers) Queryables(w http.ResponseWriter, r *http.Request) {
 			"description": "SAR frequency band (e.g., C, L, X)",
 			"type":        "string",
 		},
+		"sar:product_type": map[string]interface{}{
+			"description": "SAR product type identifier (e.g., SLC, GRD, RAW, OCN)",
+			"type":        "string",
+		},
 
 		// Satellite extension queryables
 		"sat:orbit_state": map[string]interface{}{
 			"description": "Orbit state (ascending or descending)",
 			"type":        "string",
-			"enum":        []string{"ascending", "descending"},
 		},
 		"sat:relative_orbit": map[string]interface{}{
 			"description": "Relative orbit number",
@@ -156,40 +159,46 @@ func (h *Handlers) Queryables(w http.ResponseWriter, r *http.Request) {
 
 		// Processing extension queryables
 		"processing:level": map[string]interface{}{
-			"description": "Processing level (e.g., SLC, GRD_HD, RAW, OCN)",
+			"description": "Processing level (e.g., L0, L1, L2)",
 			"type":        "string",
 		},
 
-		// Platform
+		// Platform and constellation
 		"platform": map[string]interface{}{
 			"description": "Platform identifier (e.g., sentinel-1a, alos)",
 			"type":        "string",
 		},
+		"constellation": map[string]interface{}{
+			"description": "Satellite constellation (e.g., sentinel-1)",
+			"type":        "string",
+		},
+		"instruments": map[string]interface{}{
+			"description": "Instrument identifiers (e.g., c-sar, palsar)",
+			"type":        "array",
+			"items":       map[string]interface{}{"type": "string"},
+		},
 	}
 
-	// Add collection-specific enum values from summaries
+	// Add enum values based on whether this is global or collection-specific
 	if collectionID != "" {
+		// Collection-specific: use that collection's summaries
 		coll := h.collections.Get(collectionID)
 		if coll != nil && coll.Summaries != nil {
-			if modes, ok := coll.Summaries["sar:instrument_mode"].([]interface{}); ok {
-				properties["sar:instrument_mode"].(map[string]interface{})["enum"] = modes
-			}
-			if bands, ok := coll.Summaries["sar:frequency_band"].([]interface{}); ok {
-				properties["sar:frequency_band"].(map[string]interface{})["enum"] = bands
-			}
-			if platforms, ok := coll.Summaries["platform"].([]interface{}); ok {
-				properties["platform"].(map[string]interface{})["enum"] = platforms
-			}
+			addEnumFromSummary(properties, coll.Summaries, "platform")
+			addEnumFromSummary(properties, coll.Summaries, "sar:instrument_mode")
+			addEnumFromSummary(properties, coll.Summaries, "sar:frequency_band")
+			addEnumFromSummary(properties, coll.Summaries, "sar:product_type")
+			addEnumFromSummary(properties, coll.Summaries, "sat:orbit_state")
+			addEnumFromSummary(properties, coll.Summaries, "constellation")
+			addEnumFromSummary(properties, coll.Summaries, "processing:level")
+			// Handle polarizations specially - flatten to channels as enum on items
+			addPolarizationChannelsEnum(properties, coll.Summaries)
+			// Handle instruments - set as enum on items
+			addArrayItemsEnumFromSummary(properties, coll.Summaries, "instruments")
 		}
-		// Only add processing:level queryable for UAVSAR (which has multiple processing levels)
-		// Other collections are already split by processing level, so filtering doesn't apply
-		if collectionID == "uavsar" {
-			properties["processing:level"] = map[string]interface{}{
-				"type":        "string",
-				"title":       "Processing Level",
-				"description": "Product processing level",
-			}
-		}
+	} else {
+		// Global: aggregate enum values from all collections
+		h.addGlobalEnums(properties)
 	}
 
 	queryables := map[string]interface{}{
@@ -203,4 +212,158 @@ func (h *Handlers) Queryables(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteJSON(w, http.StatusOK, queryables)
+}
+
+// addEnumFromSummary adds enum values to a property from collection summaries
+func addEnumFromSummary(properties map[string]interface{}, summaries map[string]interface{}, field string) {
+	if values, ok := summaries[field].([]interface{}); ok && len(values) > 0 {
+		if prop, ok := properties[field].(map[string]interface{}); ok {
+			prop["enum"] = values
+		}
+	}
+}
+
+// addPolarizationChannelsEnum flattens polarization combinations and adds as enum on items
+func addPolarizationChannelsEnum(properties map[string]interface{}, summaries map[string]interface{}) {
+	polarizations, ok := summaries["sar:polarizations"].([]interface{})
+	if !ok || len(polarizations) == 0 {
+		return
+	}
+
+	// Flatten to unique channels
+	seen := make(map[string]bool)
+	var channels []string
+	for _, p := range polarizations {
+		if chArray, ok := p.([]interface{}); ok {
+			for _, ch := range chArray {
+				if s, ok := ch.(string); ok && !seen[s] {
+					seen[s] = true
+					channels = append(channels, s)
+				}
+			}
+		}
+	}
+
+	if len(channels) > 0 {
+		if prop, ok := properties["sar:polarizations"].(map[string]interface{}); ok {
+			if items, ok := prop["items"].(map[string]interface{}); ok {
+				items["enum"] = channels
+			}
+		}
+	}
+}
+
+// addArrayItemsEnumFromSummary adds enum values to array items from collection summaries
+func addArrayItemsEnumFromSummary(properties map[string]interface{}, summaries map[string]interface{}, field string) {
+	values, ok := summaries[field].([]interface{})
+	if !ok || len(values) == 0 {
+		return
+	}
+
+	// Convert to string slice
+	var strValues []string
+	for _, v := range values {
+		if s, ok := v.(string); ok {
+			strValues = append(strValues, s)
+		}
+	}
+
+	if len(strValues) > 0 {
+		if prop, ok := properties[field].(map[string]interface{}); ok {
+			if items, ok := prop["items"].(map[string]interface{}); ok {
+				items["enum"] = strValues
+			}
+		}
+	}
+}
+
+// addGlobalEnums aggregates enum values from all collections for global queryables
+func (h *Handlers) addGlobalEnums(properties map[string]interface{}) {
+	// Fields to aggregate
+	stringFields := []string{
+		"platform",
+		"sar:instrument_mode",
+		"sar:frequency_band",
+		"sar:product_type",
+		"sat:orbit_state",
+		"constellation",
+		"processing:level",
+	}
+
+	// Aggregate string fields
+	for _, field := range stringFields {
+		values := h.aggregateStringEnums(field)
+		if len(values) > 0 {
+			if prop, ok := properties[field].(map[string]interface{}); ok {
+				prop["enum"] = values
+			}
+		}
+	}
+
+	// Handle sar:polarizations - flatten to unique channels and set as enum on items
+	if polarizations := h.aggregatePolarizationChannels(); len(polarizations) > 0 {
+		if prop, ok := properties["sar:polarizations"].(map[string]interface{}); ok {
+			if items, ok := prop["items"].(map[string]interface{}); ok {
+				items["enum"] = polarizations
+			}
+		}
+	}
+
+	// Handle instruments - set as enum on items
+	if instruments := h.aggregateStringEnums("instruments"); len(instruments) > 0 {
+		if prop, ok := properties["instruments"].(map[string]interface{}); ok {
+			if items, ok := prop["items"].(map[string]interface{}); ok {
+				items["enum"] = instruments
+			}
+		}
+	}
+}
+
+// aggregateStringEnums collects unique string values from a field across all collections
+func (h *Handlers) aggregateStringEnums(field string) []string {
+	seen := make(map[string]bool)
+	var result []string
+
+	for _, coll := range h.collections.All() {
+		if coll.Summaries == nil {
+			continue
+		}
+		if values, ok := coll.Summaries[field].([]interface{}); ok {
+			for _, v := range values {
+				if s, ok := v.(string); ok && !seen[s] {
+					seen[s] = true
+					result = append(result, s)
+				}
+			}
+		}
+	}
+
+	return result
+}
+
+// aggregatePolarizationChannels flattens all polarization combinations into unique channels
+func (h *Handlers) aggregatePolarizationChannels() []string {
+	seen := make(map[string]bool)
+	var result []string
+
+	for _, coll := range h.collections.All() {
+		if coll.Summaries == nil {
+			continue
+		}
+		if polarizations, ok := coll.Summaries["sar:polarizations"].([]interface{}); ok {
+			for _, p := range polarizations {
+				// Each polarization can be an array of channels like ["VV", "VH"]
+				if channels, ok := p.([]interface{}); ok {
+					for _, ch := range channels {
+						if s, ok := ch.(string); ok && !seen[s] {
+							seen[s] = true
+							result = append(result, s)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return result
 }

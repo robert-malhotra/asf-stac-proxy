@@ -113,6 +113,14 @@ func (b *ASFBackend) toASFParams(params *SearchParams) (*asf.SearchParams, error
 		Output: "geojson",
 	}
 
+	// Map IDs to granule list
+	// IMPORTANT: ASF API does not allow combining granule_list with ANY other search params
+	// (including maxResults), so when IDs are provided, we return early with only the granule list.
+	if len(params.IDs) > 0 {
+		asfParams.GranuleList = params.IDs
+		return asfParams, nil
+	}
+
 	// Map collections to ASF datasets
 	if len(params.Collections) > 0 {
 		for _, collID := range params.Collections {
@@ -122,11 +130,6 @@ func (b *ASFBackend) toASFParams(params *SearchParams) (*asf.SearchParams, error
 			}
 			asfParams.Dataset = append(asfParams.Dataset, datasets...)
 		}
-	}
-
-	// Map IDs to granule list
-	if len(params.IDs) > 0 {
-		asfParams.GranuleList = params.IDs
 	}
 
 	// Map spatial filters
