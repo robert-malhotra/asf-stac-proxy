@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/rkm/asf-stac-proxy/internal/asf"
-	"github.com/rkm/asf-stac-proxy/internal/config"
-	"github.com/rkm/asf-stac-proxy/internal/stac"
-	"github.com/rkm/asf-stac-proxy/internal/translate"
+	"github.com/robert-malhotra/asf-stac-proxy/internal/asf"
+	"github.com/robert-malhotra/asf-stac-proxy/internal/config"
+	"github.com/robert-malhotra/asf-stac-proxy/internal/stac"
+	"github.com/robert-malhotra/asf-stac-proxy/internal/translate"
 )
 
 // ASFBackend implements SearchBackend for the ASF Search API.

@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/rkm/asf-stac-proxy/internal/config"
-	"github.com/rkm/asf-stac-proxy/internal/stac"
-	"github.com/rkm/asf-stac-proxy/internal/translate"
+	"github.com/robert-malhotra/asf-stac-proxy/internal/config"
+	"github.com/robert-malhotra/asf-stac-proxy/internal/stac"
+	"github.com/robert-malhotra/asf-stac-proxy/internal/translate"
 )
 
 // createQueryablesTestCollections creates a collection registry with multiple collections

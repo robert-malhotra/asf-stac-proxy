@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/rkm/asf-stac-proxy/internal/config"
+	"github.com/robert-malhotra/asf-stac-proxy/internal/config"
 )
 
 // createTestASFBackend creates an ASF backend for testing (without actual client)

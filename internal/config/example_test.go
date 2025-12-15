@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/rkm/asf-stac-proxy/internal/config"
+	"github.com/robert-malhotra/asf-stac-proxy/internal/config"
 )
 
 func ExampleLoad() {

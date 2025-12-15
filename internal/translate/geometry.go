@@ -3,7 +3,7 @@ package translate
 import (
 	"fmt"
 
-	"github.com/rkm/asf-stac-proxy/pkg/geojson"
+	"github.com/robert-malhotra/asf-stac-proxy/pkg/geojson"
 )
 
 // BBoxToWKT converts a STAC bbox to a WKT POLYGON string.

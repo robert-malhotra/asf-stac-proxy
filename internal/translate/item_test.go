@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/rkm/asf-stac-proxy/internal/asf"
+	"github.com/robert-malhotra/asf-stac-proxy/internal/asf"
 )
 
 func TestTranslateASFFeatureToItem_NilFeature(t *testing.T) {
