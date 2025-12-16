@@ -7,9 +7,9 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/rkm/asf-stac-proxy/internal/backend"
-	"github.com/rkm/asf-stac-proxy/internal/config"
-	"github.com/rkm/asf-stac-proxy/internal/stac"
+	"github.com/robert-malhotra/asf-stac-proxy/internal/backend"
+	"github.com/robert-malhotra/asf-stac-proxy/internal/config"
+	"github.com/robert-malhotra/asf-stac-proxy/internal/stac"
 )
 
 // CMRBackend implements backend.SearchBackend for NASA's CMR API.

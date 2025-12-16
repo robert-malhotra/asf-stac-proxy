@@ -3,7 +3,7 @@ package translate
 import (
 	"testing"
 
-	"github.com/rkm/asf-stac-proxy/internal/asf"
+	"github.com/robert-malhotra/asf-stac-proxy/internal/asf"
 )
 
 func TestTranslateCQL2Filter_NilFilter(t *testing.T) {

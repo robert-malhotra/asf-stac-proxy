@@ -1,4 +1,4 @@
-module github.com/rkm/asf-stac-proxy
+module github.com/robert-malhotra/asf-stac-proxy
 
 go 1.24.0
 

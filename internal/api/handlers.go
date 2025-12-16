@@ -13,10 +13,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/planetlabs/go-ogc/filter"
 	"github.com/planetlabs/go-stac"
-	"github.com/rkm/asf-stac-proxy/internal/backend"
-	"github.com/rkm/asf-stac-proxy/internal/config"
-	intstac "github.com/rkm/asf-stac-proxy/internal/stac"
-	"github.com/rkm/asf-stac-proxy/internal/translate"
+	"github.com/robert-malhotra/asf-stac-proxy/internal/backend"
+	"github.com/robert-malhotra/asf-stac-proxy/internal/config"
+	intstac "github.com/robert-malhotra/asf-stac-proxy/internal/stac"
+	"github.com/robert-malhotra/asf-stac-proxy/internal/translate"
 )
 
 // Handlers contains all HTTP handlers for the STAC API.

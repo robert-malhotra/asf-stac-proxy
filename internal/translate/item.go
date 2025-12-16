@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/planetlabs/go-stac"
-	"github.com/rkm/asf-stac-proxy/internal/asf"
-	"github.com/rkm/asf-stac-proxy/pkg/geojson"
+	"github.com/robert-malhotra/asf-stac-proxy/internal/asf"
+	"github.com/robert-malhotra/asf-stac-proxy/pkg/geojson"
 )
 
 // TranslateASFFeatureToItem converts an ASF feature to a STAC Item.

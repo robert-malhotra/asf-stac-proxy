@@ -15,10 +15,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	gostac "github.com/planetlabs/go-stac"
-	"github.com/rkm/asf-stac-proxy/internal/backend"
-	"github.com/rkm/asf-stac-proxy/internal/config"
-	"github.com/rkm/asf-stac-proxy/internal/stac"
-	"github.com/rkm/asf-stac-proxy/internal/translate"
+	"github.com/robert-malhotra/asf-stac-proxy/internal/backend"
+	"github.com/robert-malhotra/asf-stac-proxy/internal/config"
+	"github.com/robert-malhotra/asf-stac-proxy/internal/stac"
+	"github.com/robert-malhotra/asf-stac-proxy/internal/translate"
 )
 
 // mockBackend is a test backend that returns configurable results

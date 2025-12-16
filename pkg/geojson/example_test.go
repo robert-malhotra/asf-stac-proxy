@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/rkm/asf-stac-proxy/pkg/geojson"
+	"github.com/robert-malhotra/asf-stac-proxy/pkg/geojson"
 )
 
 func ExampleGeometry_Point() {

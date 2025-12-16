@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/rkm/asf-stac-proxy/internal/asf"
+	"github.com/robert-malhotra/asf-stac-proxy/internal/asf"
 )
 
 // TranslateCQL2Filter translates a CQL2-JSON filter expression to ASF search parameters.

@@ -5,7 +5,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/rkm/asf-stac-proxy/internal/stac"
+	"github.com/robert-malhotra/asf-stac-proxy/internal/stac"
 )
 
 // SearchBackend defines the interface for search backends.

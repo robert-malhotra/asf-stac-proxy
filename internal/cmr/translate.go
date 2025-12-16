@@ -7,7 +7,7 @@ import (
 	"time"
 
 	gostac "github.com/planetlabs/go-stac"
-	"github.com/rkm/asf-stac-proxy/internal/stac"
+	"github.com/robert-malhotra/asf-stac-proxy/internal/stac"
 )
 
 // Note: STAC extension URIs are defined in internal/stac/models.go but are not
